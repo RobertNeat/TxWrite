@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+coverage/
+.angular/
+.cache/
+apps/backend/public/
+
+# Local dev data (self-hosted app volumes equivalent)
+.local-data/
+
+# Environment
+.env
+.env.*
+!.env.example
+deploy/local.env
+
+# Logs
+log/
+*.log
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.code-workspace
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# Firmware
+firmware/**/.pio/
+firmware/**/build/
+firmware/**/.cache/
+
+# TypeScript / test tooling
+*.tsbuildinfo
+.eslintcache
+.nyc_output/
+test-results/
+
+# Temporary files
+*.tmp
+deploy_proxmox.md
+*.bak
+*.orig
+*.rej
+*~
+docs/TMP*
+docs/tmp*
+**/temp/
+**/tmp/
+
+# Certificates
+.certs/
+
+
+node_modules
+.claude/
+claude.md
+agents.md
+

@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.angular
+**/.angular
+.local-data
+apps/backend/public
+coverage
+**/coverage
+*.log
+.env
+.env.*
+!.env.example

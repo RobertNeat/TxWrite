@@ -1,0 +1,13 @@
+<div class="layout">
+  <header class="topbar">
+    <span class="brand">{{ title() }}</span>
+    <app-status-bar />
+  </header>
+  <div class="workspace">
+    <aside class="file-tree-pane">File tree (placeholder)</aside>
+    <main class="editor-pane">
+      <router-outlet />
+    </main>
+    <aside class="pdf-preview-pane">PDF preview (placeholder)</aside>
+  </div>
+</div>

@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      CACHE_DIR: /cache
+      TEX_REPO_URL: https://mirror.ctan.org/systems/texlive/tlnet
+      PREFETCH_DELAY_MS: 4000
+      COMPILE_TIMEOUT_MS: 60000
+      NETWORK_FETCH: "true"
+    volumes:
+      - data:/data
+      - cache:/cache
+
+volumes:
+  data:
+  cache:
