@@ -20,7 +20,8 @@ Browser
 |     Prefetch Watcher | Job Queue | Event stream        |
 |                                                        |
 |  Toolchain                                             |
-|     TeX Live (minimal) + latexmk + engines             |
+|     TeX Live (scheme-basic, frozen snapshot) + latexmk |
+|     + engines                                          |
 |     pandoc + built-in templates                        |
 |     fontconfig + curated fonts                         |
 |     biber, Python + Pygments                           |
@@ -81,7 +82,7 @@ All backend routes are served under the `/api` prefix (decision, 2026-11-01), si
   texmf-user/                 TeX user tree: lazily installed packages
   fonts/                      lazily fetched fonts (registered with fontconfig)
   downloads/                  HTTP download cache
-  work/                       temporary compile directories
+  work/<project-id>/          persistent per-project compile working directory (§5.1, §8)
 ```
 
 Both `/data` and `/cache` are named volumes. Deleting `/cache` is always safe: it only costs re-download time.
@@ -89,9 +90,9 @@ Both `/data` and `/cache` are named volumes. Deleting `/cache` is always safe: i
 ## 5. Compile pipeline
 
 ### 5.1 LaTeX
-1. Copy or lock the project into a temp working directory under `/cache/work`.
-2. Determine engine: magic comment (`% !TEX program = xelatex`), then `latexmkrc`, then project setting.
-3. Run `latexmk` with the chosen engine, shell-escape enabled, with timeout and resource limits.
+1. Each project has one **persistent** working directory under `/cache/work/<project-id>` (not a fresh temp directory per compile). `latexmk` relies on previous-pass artifacts (`.aux`, `.bbl`, `.fls`, the `luaotfload`/font caches under `TEXMFVAR`) to avoid redoing work and to converge in the normal number of passes; discarding the directory after every compile would force a from-scratch rebuild — including the first-run font-cache warm-up described in §7 — on every single compile, not just the first. Acquire the project's compile lock (§8) before touching this directory.
+2. Determine engine: magic comment (`% !TEX program = xelatex`), then `latexmkrc`, then project setting. **`latexmkrc` must never be executed by latexmk.** `latexmkrc` is Perl that `latexmk` runs automatically from the working directory — a project imported from an untrusted zip can ship one and get arbitrary code execution regardless of shell-escape mode. Run `latexmk -norc` with the app's own rc, and only statically scan a project-provided `latexmkrc` (e.g. regex for `$pdflatex`/`$lualatex` assignments) if the engine hint is taken from it at all.
+3. Run `latexmk` with the chosen engine, shell-escape restricted by default (see §8), with timeout and resource limits.
 4. `latexmk` handles repeated passes, bibliography (`biber`/`bibtex`) and index steps.
 5. Parse the log, return PDF plus structured diagnostics.
 
@@ -100,7 +101,7 @@ Both `/data` and `/cache` are named volumes. Deleting `/cache` is always safe: i
    - **Pandoc template**: `pandoc --template <file>` with xelatex or lualatex.
    - **Class reuse**: pandoc default template with `documentclass` from YAML.
    - **Wrapper template** (later): pandoc outputs a LaTeX fragment and metadata file, then the template's main file is compiled with `latexmk`.
-2. Pandoc invokes the LaTeX engine, so the same package and font resolution applies.
+2. **Pandoc must not invoke the LaTeX engine itself.** Always run pandoc to produce an intermediate `.tex` file, then compile that `.tex` through the same `latexmk` pipeline as 5.1. Letting pandoc call the engine directly loses the `.log`, the retry loop, and biber integration. Note for the UI: compile errors will point at lines in the generated `.tex`, not at the original Markdown — the error mapping needs to account for this (at minimum, show both and say so).
 3. Return PDF plus diagnostics.
 
 ### 5.3 Retry loop (reactive resolution)
@@ -112,17 +113,18 @@ compile
      missing font             -> resolve font, install, retry
      other                    -> return error to user
 ```
-The loop has a maximum number of iterations per compile (for example 5) to avoid endless retries. Each iteration emits status events.
+The loop is capped by **no new package installed in the last iteration, or a total time budget** — not a fixed iteration count. A single template can need 20+ packages resolved one miss at a time (see §6.2 on transitive dependencies not being fully handled by `tlmgr`), so a fixed cap like 5 will abort legitimate compiles partway through. Each iteration emits status events.
 
 ## 6. Lazy library management
 
 ### 6.1 Principle
-The base image has a minimal TeX installation. Everything else is installed into a **user tree on the cache volume**, so it survives container replacement and does not require root.
+The base image has a `scheme-basic` TeX installation (see §6.6, technology.md §6). Everything else is installed into a **user tree on the cache volume**, so it survives container replacement and does not require root.
 
 ### 6.2 Package resolution
-- **By name** (from `\usepackage{foo}`, `\RequirePackage`, `\documentclass{foo}`, `\usetikzlibrary{...}`): try installing the package directly.
-- **By file** (from "File `foo.sty' not found"): ask `tlmgr search --global --file foo.sty` to find which package provides it, then install that package.
-- Dependencies are handled by `tlmgr`.
+- **Resolve by file, not by name.** The `\usepackage{foo}` name frequently does not match the TeX Live package name (`tikz`→package `pgf`, `graphicx`→`graphics`, `\usetikzlibrary{cd}`→package `tikz-cd`). Always resolve against the file the package provides (`foo.sty`, `foo.cls`), never the macro-level name.
+- **Do not call `tlmgr search --global --file` per miss.** That fetches the remote tlpdb on every lookup. Build and maintain a local file→package index derived from the cached `texlive.tlpdb`, refreshed only when the pinned snapshot changes.
+- **Dependencies are not fully handled by `tlmgr` at the package level.** In `texlive.tlpdb`, individual packages almost never declare `depend` on other packages — only collections and schemes do (verify against the `tcolorbox` entry, which pulls in several packages with no explicit `depend` chain). In practice each missing transitive dependency costs its own compile-retry iteration; the retry loop's cap (§5.3: no new install in the last iteration, or a time budget — not a fixed count) must assume this, not assume one miss resolves one dependency tree.
+- **Binaries and scripts cannot be installed in `tlmgr` user mode.** This includes `latexminted` (installed as a symlink in `bin/`), `biber`, and `xindy`. These must ship in the base image regardless of lazy package resolution — lazy install only ever adds `.sty`/`.cls`/data files, never executables.
 - Installs are serialized through the job queue. A compile that needs a package waits for its pending install.
 
 ### 6.3 Reactive mode (always on)
@@ -150,11 +152,16 @@ Prefetch is an optimization. Reactive mode remains the source of truth.
 - TeX Live is installed from the upstream installer (not the distribution package manager), pinned to a specific release, so `tlmgr` can operate.
 - When upstream moves to a newer release, the pinned release's packages live in the historic repository. The configured repository must therefore point to the matching historic location after rollover.
 - Upgrading the pinned release means rebuilding the image; the cache must be invalidated (or namespaced by release) to avoid mixing versions.
+- **The repository must point at a frozen snapshot from day one, not only after rollover.** Pointing a pinned install at a live/rolling repo breaks mid-year too: once upstream ships a newer `texlive.infra`, `tlmgr` refuses further installs until `update --self`, and the cache ends up mixing package dates from before and after that point. Use a frozen snapshot/mirror for the pinned release from the start, namespaced by release.
+- **Concrete source (decision):** CTAN's historic archive publishes a dated snapshot for every day, e.g. `https://ftp.math.utah.edu/pub/texlive-historic/2025/2025-06-01/tlnet/` — any such dated path is frozen by construction (it is never republished), unlike `tlnet` (always-rolling) or `tlnet-final` (only exists for a *past* release after the *next* one has shipped, so it is unavailable for the current release for most of the year). Pin the exact date used for the base image build in `.env`/`docker-compose.yml` (`TEX_REPO_URL`) and record that date alongside the pinned `texlive-scheme-basic` release in the image build notes, so a rebuild from the same Dockerfile reproduces the same package set. `docs/contracts/api.md`-style tracking applies here too: until the Dockerfile actually installs TeX Live (postponed, see `docs/currentwork/plan.md`), `TEX_REPO_URL` in `docker-compose.yml` is a forward-looking placeholder and must be switched from the live `tlnet` mirror to a dated historic path before that work starts.
+- **biber and biblatex must match exactly, down to the control-file version.** `biber` is a binary baked into the image; `biblatex` installed lazily from a live repo will drift newer over time. Symptom months after release: `Found biblatex control file version X, expected Y` on documents that worked before — indistinguishable from a user error unless this is known. Fix: preinstall `biblatex` together with `biber` from the same frozen snapshot, never update either lazily.
+- **The LaTeX kernel must never be updated lazily.** Compiled formats (`*.fmt`) are built at image-build time against a specific `latex-base`/`l3kernel`. A lazy `tlmgr install` that pulls a newer kernel — directly, or as a transitive dependency of some unrelated package — breaks every format. Symptom: `Mismatched LaTeX support files detected`. The pinned snapshot must cover the kernel too, with lazy installs excluded from ever touching it.
 
 ### 6.7 Failure handling
 - No network and package not cached: show "Package X is not installed and needs a download. Connect to the network and compile again."
 - Unknown package: surface the TeX error as is.
 - Install failure: report the `tlmgr` error and stop retrying that package for the current compile.
+- Retry loop exhaustion: when the cap defined in §5.3 is hit (no new package installed in the last iteration, or the time budget elapsed) while the compile is still failing, stop and surface the last compile log to the user rather than retrying further.
 
 ## 7. Font resolution
 
@@ -164,24 +171,32 @@ Fonts use the same detect, resolve, install, retry shape.
 
 **Resolution chain:**
 1. Already installed (`fc-match`).
-2. Project `fonts/` folder (made available to fontspec through the project path).
+2. Project `fonts/` folder. **This is engine-dependent, not just "made available through the project path":**
+   - XeTeX reads fontconfig, so the compile needs a per-compile `FONTCONFIG_FILE` pointing at the project's `fonts/` directory (or an engine-independent path: `fontspec`'s `Path=fonts/` option set by the backend, which works regardless of engine).
+   - LuaTeX's `luaotfload` does not use fontconfig at all — it has its own font name database (`luaotfload-tool -u`) and reads `OSFONTDIR`. Its cache lives under `TEXMFVAR`, which must be on `/cache`, or it rebuilds from scratch after every container recreate (and can exceed the compile timeout on first run — build/warm this cache at container start, not lazily on first user compile).
 3. TeX Live font package (`tlmgr search --file`).
 4. Google Fonts through an allowlisted source (the `google/fonts` repository or a Fontsource mirror).
 5. Failure message: "Font X not found. Upload the font file to this project's fonts folder."
 
-**Installation:** fetched fonts go to `/cache/fonts`, registered through a fontconfig configuration file, followed by `fc-cache`, then the compile retries.
+**Installation:** fetched fonts go to `/cache/fonts`. For XeTeX, register through a fontconfig configuration file followed by `fc-cache`. For LuaTeX, additionally run `luaotfload-tool -u` to refresh its own font name database (fontconfig registration alone is not visible to `luaotfload`). Then the compile retries.
 
-**Commercial fonts:** mapped to metric-compatible substitutes (Liberation, Carlito, Tinos) with a UI warning. Never fetched from unofficial sources.
+**Commercial fonts:** mapped to metric-compatible substitutes (Liberation, Carlito, Tinos) with a UI warning. Never fetched from unofficial sources. *(To verify before relying on this: some commercial fonts, e.g. Times New Roman/Arial/Courier New, may be obtainable legally under vendor EULAs such as the MS core fonts package; others, e.g. Calibri/Cambria, are not. Don't assume the whole commercial-font class is equally unavailable without checking the specific font.)*
 
 **Proactive font prefetch** follows the same candidate and delay mechanism as packages (6.4).
 
 ## 8. Security and limits
 
-- Compiles run inside the container, in a temporary working directory per compile.
+- Compiles run inside the container, in the project's persistent working directory (§5.1), guarded by a per-project compile lock so concurrent auto/manual triggers cannot interleave on the same `.aux`/`.bbl` files.
 - Limits: wall-clock timeout, memory cap, CPU cap, output size cap, and a cap on concurrent compiles.
 - Zip import: reject absolute paths and `..` segments, enforce total size and file count limits.
 - Download sources are allowlisted (TeX repository mirror, font sources). Network fetching can be disabled by an admin setting.
 - No authentication in the initial version. The app should bind to localhost by default and warn when exposed more widely.
+- **Shell-escape is restricted by default, not full.** Full shell-escape plus zip/template imports from the internet means arbitrary code runs with whatever the compile process can see. Restricted shell-escape (texmf.cnf `shell_escape_commands`) already covers `bibtex`, `biber`, `makeindex`, and (as of minted v3's `latexminted`) `minted` — minted was redesigned specifically to work under restricted mode without needing full shell-escape. Full shell-escape should be an explicit per-project opt-in, not the default.
+- **`openin_any` defaults to unrestricted in TeX Live (`a` — "any").** This is independent of shell-escape mode: even with shell-escape fully off, `\input{/data/app.db}` can read anything the compile process has filesystem access to, including other projects' files and the SQLite DB. Set a restrictive `openin_any` as defense in depth, but the real boundary has to be filesystem access, not the shell-escape setting.
+  - **Current state (as implemented):** the runtime container has no `USER` directive, so the Node process — and the `latexmk`/`pandoc`/`tlmgr` child processes it will spawn once the compile pipeline exists — runs as root with no extra namespace or capability restriction from `docker-compose.yml`. `openin_any` restriction plus ordinary Unix file permissions (compile processes only ever `cd` into their own project's work directory) is the actual near-term boundary.
+  - **Later hardening (not yet implemented):** run the app as a non-root `USER`, and/or run each compile's child process under a restricted UID or mount namespace that only has access to its own project directory. Track this as a postponed item (see `docs/currentwork/plan.md`) rather than assuming it is already in place.
+- **SVG requires a pre-conversion step, not `\includesvg`.** `\includesvg` calls Inkscape through shell-escape and is not on the restricted allowlist. The backend converts every project SVG (regardless of whether it's referenced from `.tex` or from Markdown) to PDF with `rsvg-convert` before the LaTeX compile runs, writing the result next to the source SVG (e.g. `figure.svg` → `figure.pdf`) so a plain `\includegraphics{figure}` picks it up with no shell-escape involved. This is a backend pre-processing step that runs independently of pandoc — it is not pandoc's own (unused, per 5.2) image-conversion path, and it runs whether the source document is `.tex` or Markdown-via-`.tex`-intermediate (5.2), since in both cases the final input to the LaTeX engine is `.tex`/`\includegraphics`, never an SVG.
+- **The per-project working directory (§5.1) needs a per-project lock.** If auto-compile and a manual compile trigger run concurrently against the same working directory, `.aux`/`.bbl` files can be read or written mid-update and corrupt the next pass. The job queue must serialize compiles per project, not just cap global concurrency.
 
 ## 9. Docker and deployment
 

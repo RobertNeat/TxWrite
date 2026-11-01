@@ -60,21 +60,23 @@ The frontend is built into static assets, so runtime weight is not a deciding fa
 
 ## 5. Jobs and realtime
 
-- **Job queue:** in-process queue with a concurrency limit (for example `p-queue`). Package and font installs run serially, compiles run with a small concurrency cap. No external broker.
+- **Job queue:** in-process queue with a concurrency limit (for example `p-queue`). Package and font installs run serially, compiles run with a small concurrency cap, **and compiles for the same project are serialized with a per-project lock** — the compile working directory is persistent per project (see `architecture.md` §5.1), so a concurrent auto-compile and manual compile against the same `.aux`/`.bbl` files would otherwise corrupt the next pass. No external broker.
 - **Realtime updates:** Server-Sent Events. Simpler than WebSockets for one-way status updates.
 
 ## 6. Compile toolchain
 
 | Piece | Choice | Notes |
 |---|---|---|
-| TeX distribution | **TeX Live from the upstream installer**, minimal scheme, pinned release | Required so `tlmgr` can lazily install packages. Distribution (apt) TeX Live generally does not support `tlmgr` installs |
-| Package management | `tlmgr` in user mode, user tree on the `cache` volume | No root needed, survives container replacement |
-| Build driver | `latexmk` | Handles multi-pass, bibliography and index automatically |
+| TeX distribution | **TeX Live from the upstream installer**, `scheme-basic` + xetex/luatex collections, pinned release, from a **frozen snapshot/mirror** | Required so `tlmgr` can lazily install packages. `scheme-minimal` has no LaTeX at all, so the real floor is `scheme-basic`. A live/rolling repo breaks mid-year when upstream ships a new `texlive.infra`, not only at the yearly rollover — pin to a frozen snapshot from day one |
+| Package management | `tlmgr` in user mode, user tree on the `cache` volume | No root needed, survives container replacement. User mode cannot install binaries/scripts (`biber`, `xindy`, `latexminted`'s `bin/` symlink) or update the kernel/formats — those must be baked into the image and excluded from lazy updates |
+| Build driver | `latexmk` | Handles multi-pass, bibliography and index automatically. Must run with `-norc` plus an app-controlled rc — a project's own `latexmkrc` is Perl `latexmk` executes automatically and is a code-execution vector from untrusted zip imports |
 | Engines | `xelatex`, `lualatex`, `pdflatex` | xelatex or lualatex for fonts and Unicode |
-| Bibliography | `biber` (and `bibtex`) | Needed by many templates |
-| Markdown | **pandoc**, pinned release | Static binary keeps it simple |
-| Code highlighting | Python 3 + Pygments | Needed for `minted`, small cost |
-| Fonts | `fontconfig` plus a curated set | For example TeX Gyre, Libertinus, Noto, DejaVu, Liberation, Carlito, Inter |
+| Bibliography | `biber` (and `bibtex`) | Needed by many templates. `biber` and `biblatex` must come from the same frozen snapshot and be upgraded together, never independently — a drifted `biblatex` from a live repo produces `Found biblatex control file version X, expected Y` |
+| Markdown | **pandoc**, pinned release | Static binary keeps it simple. Pandoc should only ever produce an intermediate `.tex`, never invoke the LaTeX engine itself — otherwise the `.log`-based retry loop and biber integration are bypassed |
+| Code highlighting | Python 3 + Pygments | Needed for `minted`. minted v3 (`latexminted`) runs under *restricted* shell-escape by design, so it does not require full shell-escape — restricted can be the default |
+| Hyphenation / language | `hyphen-polish`, `babel-polish`, `polski` preinstalled | Hyphenation patterns are compiled into formats (`fmtutil`/`language.dat`); a missing pattern only produces a babel warning, not an error, so the reactive retry loop never catches it. Must ship in the base image, never lazy, for every supported language |
+| Fonts | `fontconfig` plus a curated set | For example TeX Gyre, Libertinus, Noto, DejaVu, Liberation, Carlito, Inter. XeTeX uses fontconfig; LuaTeX's `luaotfload` does not — it needs its own cache (`TEXMFVAR`) kept on `/cache` |
+| Vector graphics | `rsvg-convert` | The backend pre-converts every project SVG to PDF before each compile (independent of pandoc, which only ever produces an intermediate `.tex` — see §6 Markdown row), since `\includesvg` depends on Inkscape via shell-escape, which restricted mode does not allow. See `architecture.md` §8 |
 | Markdown templates | Eisvogel plus a few others, bundled | Exposed as built-in templates in the UI |
 | Optional | Graphviz | Small, used by some templates and diagrams |
 
@@ -96,14 +98,14 @@ The frontend is built into static assets, so runtime weight is not a deciding fa
 
 ## 9. Image size strategy
 
-- Install TeX Live with the smallest scheme, skip documentation and source trees, add only a short list of common packages.
+- Install TeX Live with `scheme-basic` (the smallest scheme that includes LaTeX itself — `scheme-minimal` does not, see §6), skip documentation and source trees, add only a short list of common packages.
 - Keep pandoc as a single binary.
 - Keep the curated font set modest and rely on lazy fetching for the rest.
-- Measure the final size per layer and set a budget. Rough expectation: base OS + TeX minimal + pandoc + Python + Node lands in the low single-digit GB range or below; treat this as an estimate to verify.
+- Measure the final size per layer and set a budget. Rough expectation: base OS + TeX `scheme-basic` + pandoc + Python + Node lands in the low single-digit GB range or below; treat this as an estimate to verify.
 
 ## 10. Suggested build order
 
-1. Image with TeX Live (minimal), `latexmk`, pandoc, and a CLI-level compile proof.
+1. Image with TeX Live (`scheme-basic`, from a frozen snapshot — see `architecture.md` §6.6), `latexmk`, pandoc, and a CLI-level compile proof.
 2. Backend skeleton: profiles, projects, file operations, compile endpoint.
 3. Reactive lazy install loop for packages (log parser plus `tlmgr` user mode).
 4. Frontend: file tree, editor, PDF preview, compile log.

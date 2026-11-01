@@ -76,27 +76,32 @@ Assumption: LaTeX and pandoc templates are **not fully interchangeable** (a pand
 
 ## 4. Constraints and design principles
 
-1. **Lightweight base image.** The shipped image contains only a minimal TeX installation, pandoc, a small curated set of preinstalled packages and a curated set of fonts. Target size to be measured; the intent is well under a full TeX Live.
+1. **Lightweight base image.** The shipped image contains only a `scheme-basic` TeX installation (the smallest scheme that includes LaTeX itself — see `technology.md` §6), pandoc, a small curated set of preinstalled packages and a curated set of fonts. Target size to be measured; the intent is well under a full TeX Live.
 2. **Lazy pull, then cached.** A package or font not yet present is downloaded the first time it is needed and stored in a persistent cache volume. Later compiles use the cache and work offline for anything already cached.
 3. **Invisible to the user.** The user sees at most a slower first compile and a status message. No manual installation steps.
-4. **No artificial limit.** Any package available from the TeX package repository can be resolved. Fonts follow a best-effort chain with a guaranteed manual fallback (upload the font file to the project).
+4. **No artificial limit, but with exceptions that must ship preinstalled, not lazily.** Any package available from the TeX package repository can in principle be resolved lazily, except: binaries/scripts (`biber`, `xindy`, `latexminted`'s `bin/` symlink — `tlmgr` user mode cannot install these at all), the LaTeX kernel (`latex-base`/`l3kernel`, baked into the compiled formats at image-build time), and hyphenation patterns for any language the project must support (also baked into formats — see §5). Fonts follow a best-effort chain with a guaranteed manual fallback (upload the font file to the project).
 5. **Ephemeral container, persistent data.** The container can be destroyed and recreated at any time. Projects, templates, profiles and caches live in volumes.
-6. **Container as the sandbox.** Compiles run with shell-escape enabled inside the container, with CPU, memory and time limits. The app is meant for local or trusted use.
-7. **Safe imports.** Zip imports must prevent path traversal (zip-slip) and enforce size limits.
+6. **Shell-escape restricted by default, not full.** Compiles run with *restricted* shell-escape by default (covers `bibtex`, `biber`, `makeindex`, and minted v3's `latexminted`, which was redesigned to work under restricted mode). Full shell-escape is an explicit per-project opt-in, because combined with zip/template imports from the internet it allows arbitrary code execution with whatever access the compile process has. Process/filesystem isolation is a separate control, not provided by shell-escape mode, since TeX's `openin_any` defaults to unrestricted regardless (see `architecture.md` §8); today that boundary is ordinary Unix file permissions within the container, with UID/mount-namespace isolation tracked as later hardening, not yet implemented.
+7. **Safe imports.** Zip imports must prevent path traversal (zip-slip) and enforce size limits. A project-provided `latexmkrc` must never be executed (it is Perl, run automatically by `latexmk` from the working directory) — only statically parsed if used at all for engine detection.
 
-## 5. Font assumptions
+## 5. Font and language assumptions
 
 - A good default font set is shipped so most documents work immediately.
 - Fonts not shipped are resolved in order: already installed, project `fonts/` folder, TeX Live font packages, Google Fonts (via an allowlisted source), then a clear error asking the user to upload the font file.
-- Commercial fonts (for example Helvetica Neue, Calibri, Times New Roman) cannot be fetched legally. They are mapped to metric-compatible substitutes with a visible warning.
+- **Resolution differs by engine**, not just by "project path": XeTeX needs a per-compile fontconfig config pointing at `fonts/` (or, engine-independent, `fontspec`'s `Path=fonts/`); LuaTeX's `luaotfload` has its own font database (not fontconfig) and its cache must live on `/cache` under `TEXMFVAR` or it rebuilds — and can time out — on every container recreate.
+- Commercial fonts: **to verify per font before stating as fact.** Some (for example Times New Roman, Arial, Courier New) may be legally obtainable under vendor EULAs such as the MS core fonts package; others (for example Calibri, Cambria) are not. Treat "cannot be fetched legally" as a per-font lookup, not a blanket rule for all commercial fonts, and map unavailable ones to metric-compatible substitutes with a visible warning.
+- **Hyphenation patterns must be preinstalled for every language the project supports, never lazy.** They are compiled into formats via `fmtutil`/`language.dat`. A missing pattern produces only a babel *warning*, not a compile error, so the reactive retry loop (architecture.md §5.3) will not notice and will not trigger an install — the document just hyphenates badly with no visible failure. Polish (`hyphen-polish`, `babel-polish`, `polski`) must be in the base image from day one since it's the primary target language for this project.
 
 ## 6. Known risks
 
-- **tlmgr release matching.** Lazy installation with `tlmgr` requires an upstream TeX Live install whose release matches the package repository. Releases roll yearly, so the pinned release needs a defined historic-repository strategy (see `architecture.md`).
+- **tlmgr release matching, and not only at yearly rollover.** Lazy installation with `tlmgr` requires an upstream TeX Live install whose release matches the package repository. Even mid-year, pointing a pinned install at a live/rolling repo breaks once upstream ships a newer `texlive.infra` (`tlmgr` then refuses installs until `update --self`) and mixes package dates in the cache. The repository must point at a frozen snapshot/mirror from day one, namespaced by release, not just after the yearly rollover (see `architecture.md` §6.6).
+- **biber/biblatex version drift.** `biber` is a binary baked into the image; a lazily-installed `biblatex` from a live repo will drift to a newer version over time, producing `Found biblatex control file version X, expected Y` on documents that used to compile. Both must come from the same frozen snapshot and never be updated independently.
 - **Packages that need external tools** (for example `minted` needs Pygments, `biber` for bibliographies) require those tools in the base image.
+- **Package dependency resolution is not automatic at the package level.** `texlive.tlpdb` entries mostly declare no `depend` relationships between individual packages (only collections/schemes do), so a template needing many packages can surface them one compile-retry at a time. The retry loop must be capped by "no new install happened" or a time budget, not a fixed iteration count (see `architecture.md` §5.3).
 - **First-compile latency** for large dependency sets such as TikZ-heavy or font-heavy templates.
 - **Network dependence on first use** of an uncached package. The UI must explain this clearly when offline.
 - **Zip templates in the wild** vary widely (custom engines, odd main files), so main-file and engine detection need good defaults and manual override.
+- **SVG needs a conversion step.** `\includesvg` depends on Inkscape via shell-escape, which is not in the restricted allowlist. The backend pre-converts every project SVG to PDF with `rsvg-convert` before the LaTeX compile runs, independent of pandoc (see `architecture.md` §8).
 
 ## 7. Initial scope (MVP)
 
@@ -116,7 +121,7 @@ Assumption: LaTeX and pandoc templates are **not fully interchangeable** (a pand
 
 ## 8. Open questions
 
-- Which pinned TeX Live release, and how to handle the yearly rollover?
-- Should compile isolation per request go beyond a temp working directory?
+- Which pinned TeX Live release, and which exact frozen-snapshot date (see `architecture.md` §6.6)?
+- Compile working directories are persistent per project, not per-request temp (see `architecture.md` §5.1) — should isolation beyond that (restricted UID, mount namespace) be in scope for the MVP, or a later hardening pass (see `architecture.md` §8 note on current feasibility)?
 - Is auto-compile on edit in scope for the MVP, or manual compile first?
 - Should the template gallery be a built-in list or a configurable list of zip URLs?
