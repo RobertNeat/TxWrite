@@ -10,11 +10,10 @@ services:
       HOST: 0.0.0.0
       DATA_DIR: /data
       CACHE_DIR: /cache
-      # Must be a frozen dated snapshot, not the rolling tlnet mirror (see
-      # docs/project_assumptons/architecture.md section 6.6) — set the actual date
-      # once the TeX Live install step is implemented and the base image's pinned
-      # release is known.
-      TEX_REPO_URL: https://ftp.math.utah.edu/pub/texlive-historic/2025/2025-06-01/tlnet/
+      # Frozen dated snapshot, not the rolling tlnet mirror (see
+      # docs/project_assumptons/architecture.md section 6.6). Verified reachable
+      # 2026-11-01. Must match the TEX_REPO_URL build ARG passed to install-tl.
+      TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
       PREFETCH_DELAY_MS: 4000
       COMPILE_TIMEOUT_MS: 60000
       NETWORK_FETCH: "true"
