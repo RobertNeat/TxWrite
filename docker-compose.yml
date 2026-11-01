@@ -6,8 +6,11 @@ services:
       args:
         # Must match the runtime TEX_REPO_URL below — this is what install-tl
         # actually fetches from at build time; the runtime value is what tlmgr
-        # uses for lazy installs afterwards. Keep both in sync.
+        # uses for lazy installs afterwards. The entrypoint checks both ARGs against
+        # the runtime env vars below at container start and refuses to start on a
+        # mismatch (section 6.6: caches must never silently mix across snapshots).
         TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+        TL_SNAPSHOT_KEY: "2026-10-01"
     ports:
       - "127.0.0.1:3000:3000"
     environment:

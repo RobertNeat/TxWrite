@@ -41,6 +41,11 @@ RUN pnpm --filter backend build
 # (slow, large) toolchain install layer is cached independently of app code changes.
 FROM debian:bookworm-slim AS toolchain
 ARG TEX_REPO_URL=https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+# Short, filesystem-safe key derived from the snapshot date, used to namespace the
+# /cache/tl-<key>/ trees at runtime (section 6.6: caches must never mix package dates
+# across a pinned-release change — a flat /cache/texmf-user would otherwise silently
+# carry packages installed against an old snapshot into a rebuild against a new one).
+ARG TL_SNAPSHOT_KEY=2026-10-01
 ARG PANDOC_VERSION=3.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -51,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     curl \
     ca-certificates \
+    gnupg \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,6 +65,10 @@ RUN curl -fsSL "${TEX_REPO_URL}install-tl-unx.tar.gz" -o install-tl-unx.tar.gz \
     && tar -xzf install-tl-unx.tar.gz --strip-components=1 \
     && rm install-tl-unx.tar.gz
 COPY docker/texlive.profile ./texlive.profile
+# -no-verify-downloads would silence this cleanly, but the upstream flag for turning
+# verification ON by default already applies here: install-tl verifies the tlpdb's
+# GPG signature against its own bundled keyring when gnupg is available (installed
+# above), so no extra flag is needed — only its absence would need one.
 RUN ./install-tl -profile texlive.profile -repository "${TEX_REPO_URL}" \
     && rm -rf /tmp/texlive-install
 ENV PATH="/opt/texlive/bin/x86_64-linux:${PATH}"
@@ -105,6 +115,7 @@ RUN dpkgArch="$(dpkg --print-architecture)" \
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ARG TEX_REPO_URL=https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+ARG TL_SNAPSHOT_KEY=2026-10-01
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -118,7 +129,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=toolchain /opt/texlive /opt/texlive
 COPY --from=toolchain /usr/local/bin/pandoc /usr/local/bin/pandoc
 ENV PATH="/opt/texlive/bin/x86_64-linux:${PATH}"
-ENV TEX_REPO_URL=${TEX_REPO_URL}
+# TL_IMAGE_REPO_URL and TL_SNAPSHOT_KEY record what the image was actually built
+# against. Kept separate from the runtime TEX_REPO_URL env var (set in
+# docker-compose.yml), which docker/entrypoint.sh checks against this at container
+# start — the two must always refer to the same snapshot (see section 6.6).
+ENV TL_IMAGE_REPO_URL=${TEX_REPO_URL}
+ENV TL_SNAPSHOT_KEY=${TL_SNAPSHOT_KEY}
 
 # Without this, fontconfig (and therefore XeTeX/fontspec) cannot see TeX Live's
 # bundled fonts (Latin Modern, TeX Gyre, etc.) at all, since /opt/texlive is outside
