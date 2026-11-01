@@ -102,6 +102,7 @@ The frontend is built into static assets, so runtime weight is not a deciding fa
 - Keep pandoc as a single binary.
 - Keep the curated font set modest and rely on lazy fetching for the rest.
 - Measure the final size per layer and set a budget. Rough expectation: base OS + TeX `scheme-basic` + pandoc + Python + Node lands in the low single-digit GB range or below; treat this as an estimate to verify.
+- **Measured (2026-11-01, feature/texlive-toolchain branch):** total image ~2.01 GB. Largest layers: TeX Live install (`/opt/texlive` copied into runtime) ~633 MB, the `tlmgr install` layer itself (xetex/luatex collections, biber, hyphenation, minted, fontsrecommended) ~201 MB, pandoc 3.5's static binary (genuinely ~150 MB — it statically links GHC/Haskell plus the full citation/filter/Lua stack; this is expected upstream, not a packaging bug) ~150 MB, Node backend `pnpm install --prod` ~199 MB + ~42 MB. Within budget; no further size work needed yet.
 
 ## 10. Suggested build order
 

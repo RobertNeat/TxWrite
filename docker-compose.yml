@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Must match the runtime TEX_REPO_URL below — this is what install-tl
+        # actually fetches from at build time; the runtime value is what tlmgr
+        # uses for lazy installs afterwards. Keep both in sync.
+        TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
     ports:
       - "127.0.0.1:3000:3000"
     environment:
