@@ -1,11 +1,7 @@
 import { Injectable, OnDestroy, signal } from '@angular/core';
+import type { AppEvent } from '../api/api.types.js';
 
-export interface AppEvent {
-  type: string;
-  projectId?: string;
-  payload?: unknown;
-  timestamp: string;
-}
+export type { AppEvent };
 
 @Injectable({ providedIn: 'root' })
 export class EventStreamService implements OnDestroy {

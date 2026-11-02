@@ -8,43 +8,38 @@ Remove this entry once a frontend consumer (e.g. a status indicator) is added, o
 it's confirmed the endpoint is meant to stay ops-only (health checks, `docker compose`
 healthcheck) and not be called from the UI.
 
-## SSE event type mismatch
+## ~~SSE event type mismatch~~ — resolved
 
-- Backend (`apps/backend/src/modules/events/event-bus.service.ts`) types `AppEvent.type`
-  as a closed union: `AppEventType` (`'compile.started' | 'compile.finished' | ...`).
-- Frontend (`apps/frontend/src/app/core/events/event-stream.service.ts`) types the same
-  field as plain `string`.
-
-No shared-types package exists yet, so the two sides can drift silently. Resolve by
-either introducing a `packages/shared` workspace package with the event type union (and
-importing it from both apps), or by duplicating the exact union on the frontend and
-keeping the two manually in sync. **Now fully load-bearing:** the Compile module and
-Resource Resolver (feature/projects-and-compile) emit real `compile.started` /
-`compile.finished` / `install.queued` / `install.started` / `install.finished` /
-`install.failed` events over `/api/events`. `font.*` events are still unimplemented
-(font resolution is postponed — see plan.md).
+Fixed in feature/frontend-wiring: the frontend's `AppEvent`/`AppEventType` now live
+in `apps/frontend/src/app/core/api/api.types.ts`, manually mirroring the backend's
+`apps/backend/src/modules/events/event-bus.service.ts` union. Still no
+`packages/shared` workspace package — both sides must be updated together when the
+union changes. `font.*` events remain unimplemented (font resolution is postponed —
+see plan.md).
 
 ## Profiles and Projects CRUD + file endpoints
 
 Implemented on the backend (`apps/backend/src/modules/profiles`,
 `apps/backend/src/modules/projects`), feature/projects-and-compile branch:
 
-- `GET/POST /api/profiles`
-- `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`
-- `GET/PUT/DELETE /api/projects/:id/files/*` (binary bodies via
-  `application/octet-stream`)
-- `GET /api/projects/:id/files` (feature/frontend-wiring) — recursive listing,
+- `GET/POST /api/profiles` — consumed (feature/frontend-wiring: profile picker)
+- `GET/POST /api/projects`, `GET/DELETE /api/projects/:id` — consumed
+  (project list). `PUT /api/projects/:id` still unconsumed (no project
+  settings/rename UI yet).
+- `GET/PUT/DELETE /api/projects/:id/files/*` — `PUT`/`GET` consumed by the
+  editor's load/save (Milestone 3); `DELETE` still unconsumed (no delete-file
+  UI yet in the file tree).
+- `GET /api/projects/:id/files` — recursive listing,
   `{ path: string, size: number, isDirectory: boolean }[]`, paths are `/`-joined
   relative to the project root regardless of host OS. Symlinks that resolve
   outside the project root are silently skipped (not listed, not descended into).
-- `POST /api/projects/:id/files/move` (feature/frontend-wiring) — body
-  `{ from: string, to: string }`, used for both rename and move. Both paths are
-  confinement-checked.
+  Consumed by the file tree (Milestone 3).
+- `POST /api/projects/:id/files/move` — body `{ from: string, to: string }`,
+  used for both rename and move. Both paths are confinement-checked. Still
+  unconsumed (no rename UI yet in the file tree).
 
-Nothing in the frontend calls any of these yet — the file tree, project list, and
-profile picker UI are all still placeholders. Remove each endpoint's entry here once
-a frontend consumer exists for it, or fold this into a single "frontend data layer"
-contract item if several land together.
+Remove each sub-item once its frontend consumer exists, or fold the whole section
+away once nothing here is unconsumed.
 
 ## Compile endpoints
 

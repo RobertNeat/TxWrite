@@ -24,12 +24,16 @@ Implemented and verified end-to-end through the real API: GET /api/projects/:id/
 GET /api/projects/:id/output.pdf (confirmed via curl -I). 8 new unit tests, full
 verify suite green. docs/contracts/api.md updated.
 
-## Milestone 2: project shell
-- [ ] Frontend API service (fetch wrapper) mirroring backend DTOs/AppEventType (manual sync, no packages/shared yet — revisit if drift becomes a problem)
-- [ ] Profile picker: list + create, persisted selection (localStorage, no auth)
-- [ ] Project list + create (name, engine, mainFile)
-- [ ] Routing by :projectId
-- [ ] i18n service: signal-based, PL default / EN switchable, JSON dictionaries, no new dependency
+## Milestone 2: project shell — done, verified live, pending commit
+Frontend API service (fetch wrapper mirroring backend DTOs/AppEventType, manual
+sync, no packages/shared yet — revisit if drift becomes a problem), profile picker
+(list + create), project list + create (name, engine, mainFile), routing
+(`/` -> `/profiles/:profileId/projects` -> `/projects/:projectId`), i18n service
+(signal-based, PL default / EN switchable, JSON dictionaries, no new dependency).
+Verified end-to-end in a real browser (profile create -> project create -> open ->
+editor route, Polish UI, SSE connected, no console errors). `pnpm run verify` green.
+Every element in the new templates has an explicit id attribute (see memory:
+feedback_html_element_ids). Still needs a commit.
 
 ## Milestone 3: file tree + editor
 - [ ] File tree component backed by GET /files, create/rename(move)/delete actions
