@@ -3,11 +3,7 @@
     <span id="app-brand" class="brand">{{ title() }}</span>
     <app-status-bar id="app-status-bar" />
   </header>
-  <div id="app-workspace" class="workspace">
-    <aside id="file-tree-pane" class="file-tree-pane">File tree (placeholder)</aside>
-    <main id="editor-pane" class="editor-pane">
-      <router-outlet />
-    </main>
-    <aside id="pdf-preview-pane" class="pdf-preview-pane">PDF preview (placeholder)</aside>
-  </div>
+  <main id="app-workspace" class="workspace">
+    <router-outlet />
+  </main>
 </div>

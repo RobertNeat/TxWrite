@@ -1,4 +1,31 @@
-import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  OnChanges,
+  OnDestroy,
+  SimpleChanges,
+  ViewChild,
+  inject,
+  input,
+} from '@angular/core';
+import type { Extension } from '@codemirror/state';
+import { ApiService } from '../../core/api/api.service.js';
+
+const SAVE_DEBOUNCE_MS = 800;
+
+function languageExtensionFor(path: string): Promise<Extension> {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'md' || ext === 'markdown') {
+    return import('@codemirror/lang-markdown').then((m) => m.markdown());
+  }
+  if (ext === 'tex' || ext === 'sty' || ext === 'cls' || ext === 'bib') {
+    return import('@codemirror/legacy-modes/mode/stex').then((m) =>
+      import('@codemirror/language').then((l) => l.StreamLanguage.define(m.stexMath)),
+    );
+  }
+  return Promise.resolve([]);
+}
 
 @Component({
   selector: 'app-editor',
@@ -14,25 +41,112 @@ import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@ang
     `,
   ],
 })
-export class EditorComponent implements AfterViewInit, OnDestroy {
+export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
+  private readonly api = inject(ApiService);
+
+  readonly projectId = input.required<string>();
+  readonly filePath = input<string | null>(null);
+
   @ViewChild('host', { static: true }) private host!: ElementRef<HTMLElement>;
 
   private view: import('@codemirror/view').EditorView | null = null;
+  private saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  private viewReady: Promise<void> | null = null;
+  private loadedPath: string | null = null;
 
   async ngAfterViewInit(): Promise<void> {
-    const [{ EditorView, basicSetup }, { markdown }] = await Promise.all([
-      import('codemirror'),
-      import('@codemirror/lang-markdown'),
-    ]);
+    this.viewReady = this.createView();
+    await this.viewReady;
+    await this.loadCurrentFile();
+  }
 
+  async ngOnChanges(changes: SimpleChanges): Promise<void> {
+    if (changes['filePath'] && this.viewReady) {
+      await this.viewReady;
+      await this.loadCurrentFile();
+    }
+  }
+
+  private async createView(): Promise<void> {
+    const { EditorView, basicSetup } = await import('codemirror');
     this.view = new EditorView({
-      doc: '% Start writing LaTeX or Markdown here\n',
-      extensions: [basicSetup, markdown()],
+      doc: '',
+      extensions: [
+        basicSetup,
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            this.scheduleSave();
+          }
+        }),
+      ],
       parent: this.host.nativeElement,
     });
   }
 
+  private async loadCurrentFile(): Promise<void> {
+    const path = this.filePath();
+    if (!this.view) {
+      return;
+    }
+    if (!path) {
+      this.clear();
+      return;
+    }
+    if (path === this.loadedPath) {
+      return;
+    }
+    const [{ EditorState }, languageExtension] = await Promise.all([
+      import('@codemirror/state'),
+      languageExtensionFor(path),
+    ]);
+    const content = await this.api.readFile(this.projectId(), path);
+    this.loadedPath = path;
+    const { EditorView, basicSetup } = await import('codemirror');
+    this.view.setState(
+      EditorState.create({
+        doc: content,
+        extensions: [
+          basicSetup,
+          languageExtension,
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              this.scheduleSave();
+            }
+          }),
+        ],
+      }),
+    );
+  }
+
+  private clear(): void {
+    if (!this.view || this.loadedPath === null) {
+      return;
+    }
+    this.loadedPath = null;
+    this.view.dispatch({
+      changes: { from: 0, to: this.view.state.doc.length, insert: '' },
+    });
+  }
+
+  private scheduleSave(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => void this.save(), SAVE_DEBOUNCE_MS);
+  }
+
+  private async save(): Promise<void> {
+    const path = this.filePath();
+    if (!this.view || !path) {
+      return;
+    }
+    await this.api.writeFile(this.projectId(), path, this.view.state.doc.toString());
+  }
+
   ngOnDestroy(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
     this.view?.destroy();
   }
 }

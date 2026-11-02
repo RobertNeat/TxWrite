@@ -16,6 +16,8 @@ export const routes: Routes = [
   {
     path: 'projects/:projectId',
     loadComponent: () =>
-      import('./features/editor/editor.component.js').then((m) => m.EditorComponent),
+      import('./features/workspace/project-workspace.component.js').then(
+        (m) => m.ProjectWorkspaceComponent,
+      ),
   },
 ];

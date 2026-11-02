@@ -26,20 +26,23 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
 - `GET/POST /api/projects`, `GET/DELETE /api/projects/:id` — consumed
   (project list). `PUT /api/projects/:id` still unconsumed (no project
   settings/rename UI yet).
-- `GET/PUT/DELETE /api/projects/:id/files/*` — `PUT`/`GET` consumed by the
-  editor's load/save (Milestone 3); `DELETE` still unconsumed (no delete-file
-  UI yet in the file tree).
+- `GET/PUT/DELETE /api/projects/:id/files/*` — consumed: `GET`/`PUT` by the
+  editor's load/save, `DELETE` by the file tree's delete action.
 - `GET /api/projects/:id/files` — recursive listing,
   `{ path: string, size: number, isDirectory: boolean }[]`, paths are `/`-joined
   relative to the project root regardless of host OS. Symlinks that resolve
   outside the project root are silently skipped (not listed, not descended into).
-  Consumed by the file tree (Milestone 3).
+  Consumed by the file tree.
 - `POST /api/projects/:id/files/move` — body `{ from: string, to: string }`,
-  used for both rename and move. Both paths are confinement-checked. Still
-  unconsumed (no rename UI yet in the file tree).
+  used for both rename and move. Both paths are confinement-checked. Consumed
+  by the file tree's rename action (`window.prompt`-based, no modal yet).
 
-Remove each sub-item once its frontend consumer exists, or fold the whole section
-away once nothing here is unconsumed.
+Only `PUT /api/projects/:id` (project settings/rename) remains unconsumed —
+there's no project settings UI yet. File creation has no dedicated endpoint:
+the frontend creates a new file by `PUT`-ing empty content to a new path, which
+the backend already supports (`writeFile` creates parent dirs + the file). There
+is no way to create an empty directory with no files in it from the UI; not
+needed yet since `PUT files/*` auto-creates parent directories for any path.
 
 ## Compile endpoints
 

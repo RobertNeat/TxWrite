@@ -24,24 +24,6 @@
 
 .workspace {
   flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: 220px 1fr 360px;
   min-height: 0;
-}
-
-.file-tree-pane,
-.pdf-preview-pane {
-  overflow: auto;
-  padding: 0.5rem;
-  border-right: 1px solid #eee;
-}
-
-.pdf-preview-pane {
-  border-right: none;
-  border-left: 1px solid #eee;
-}
-
-.editor-pane {
-  min-width: 0;
   overflow: auto;
 }

@@ -35,10 +35,21 @@ editor route, Polish UI, SSE connected, no console errors). `pnpm run verify` gr
 Every element in the new templates has an explicit id attribute (see memory:
 feedback_html_element_ids). Still needs a commit.
 
-## Milestone 3: file tree + editor
-- [ ] File tree component backed by GET /files, create/rename(move)/delete actions
-- [ ] Editor: language mode by extension (.md -> @codemirror/lang-markdown, .tex/.sty/.cls/.bib -> stex via @codemirror/legacy-modes), both already installed
-- [ ] Load file content on selection, save on edit (debounced) via PUT files/*
+## Milestone 3: file tree + editor — done, verified live, pending commit
+File tree component (GET /files listing, create via PUT with empty content,
+rename via POST /files/move, delete via DELETE /files/*). Editor: language mode
+by extension (.md -> @codemirror/lang-markdown, .tex/.sty/.cls/.bib -> stex via
+@codemirror/legacy-modes + @codemirror/language's StreamLanguage, added as an
+explicit frontend dependency since it's used directly now). Load on selection,
+debounced save (800ms) via PUT files/*. Deleting or renaming away the file
+currently open in the editor clears it (fileOpened emits null, editor clears its
+CodeMirror doc) rather than leaving stale content. Moved the file-tree/editor/
+PDF-preview layout out of the app shell into a new ProjectWorkspaceComponent
+(the workspace route), since the shell previously rendered that layout globally
+even on the profile-picker and project-list routes. Verified live in browser:
+create/open/edit/save/reload-persists for both .tex and .md, syntax highlighting
+confirmed for both modes, delete-while-open clears the editor and does not
+resurrect the file via a stray debounced save. `pnpm run verify` green.
 
 ## Milestone 4: compile + log + status bar
 - [ ] Compile button: disabled while in flight, calls POST /compile
