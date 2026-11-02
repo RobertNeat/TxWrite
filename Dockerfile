@@ -111,6 +111,27 @@ RUN dpkgArch="$(dpkg --print-architecture)" \
     && rm pandoc.tar.gz \
     && pandoc --version
 
+# File->package index for lazy package resolution (architecture.md section 6.2):
+# resolve \usepackage{foo} by the file foo.sty actually provides, not the macro
+# name, and never call `tlmgr search --global --file` per miss. Built once at
+# image-build time from the pinned snapshot's full tlpdb (which lists every
+# package in the repository, not just what's installed locally), refreshed only
+# when the pinned snapshot changes.
+COPY docker/build-package-index.pl /tmp/build-package-index.pl
+# install-tl already downloaded and GPG-verified the full remote tlpdb once, to
+# /opt/texlive/tlpkg/texlive.tlpdb.main.<hash> — reuse that cached, verified copy
+# instead of a second, unverified curl download of the same 20+MB file.
+RUN remote_tlpdb="$(find /opt/texlive/tlpkg -maxdepth 1 -name 'texlive.tlpdb.main.*')" \
+    && [ "$(echo "$remote_tlpdb" | wc -l)" = "1" ] \
+    && perl /tmp/build-package-index.pl \
+         /opt/texlive/tlpkg/texlive.tlpdb \
+         "$remote_tlpdb" \
+         /tmp/package-index.json \
+    && gzip -9 /tmp/package-index.json \
+    && mkdir -p /opt/app \
+    && mv /tmp/package-index.json.gz /opt/app/package-index.json.gz \
+    && rm -f /tmp/build-package-index.pl
+
 #### Stage: runtime ####
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
@@ -124,6 +145,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pygments \
     librsvg2-bin \
     wget \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=toolchain /opt/texlive /opt/texlive
@@ -141,6 +163,16 @@ ENV TL_SNAPSHOT_KEY=${TL_SNAPSHOT_KEY}
 # fontconfig's default search dirs.
 COPY docker/texlive-fonts.conf /etc/fonts/conf.d/09-texlive.conf
 RUN fc-cache -f
+
+# App-owned pandoc Lua filter (not user-supplied) that rewrites .svg image
+# references to .pdf, since every project SVG is pre-converted to PDF before
+# compile (architecture.md section 8) — without it, pandoc emits \includesvg for
+# .svg paths, which needs the svg package and Inkscape via shell-escape.
+COPY docker/pandoc-filters /opt/app/pandoc-filters
+
+# File->package index for lazy resolution (architecture.md section 6.2), built in
+# the toolchain stage from the pinned snapshot's full tlpdb.
+COPY --from=toolchain /opt/app/package-index.json.gz /opt/app/package-index.json.gz
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/backend/package.json apps/backend/package.json

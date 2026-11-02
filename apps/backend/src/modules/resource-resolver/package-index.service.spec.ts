@@ -1,0 +1,59 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
+import { PackageIndexService } from './package-index.service.js';
+
+describe('PackageIndexService', () => {
+  let dir: string;
+  let indexPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'package-index-test-'));
+    indexPath = join(dir, 'package-index.json.gz');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function makeService(
+    index: Record<string, string> | null,
+  ): Promise<PackageIndexService> {
+    if (index) {
+      writeFileSync(indexPath, gzipSync(JSON.stringify(index)));
+    }
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PackageIndexService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (_key: string, fallback?: string) =>
+              index ? indexPath : (fallback ?? dir),
+          },
+        },
+      ],
+    }).compile();
+    const service = module.get(PackageIndexService);
+    service.onModuleInit();
+    return service;
+  }
+
+  it('resolves a file to its providing package', async () => {
+    const service = await makeService({ 'polyglossia.sty': 'polyglossia' });
+    expect(service.packageProviding('polyglossia.sty')).toBe('polyglossia');
+  });
+
+  it('returns undefined for an unknown file', async () => {
+    const service = await makeService({ 'polyglossia.sty': 'polyglossia' });
+    expect(service.packageProviding('does-not-exist.sty')).toBeUndefined();
+  });
+
+  it('returns undefined for every lookup when the index file is missing', async () => {
+    const service = await makeService(null);
+    expect(service.packageProviding('anything.sty')).toBeUndefined();
+  });
+});

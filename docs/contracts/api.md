@@ -18,5 +18,46 @@ healthcheck) and not be called from the UI.
 No shared-types package exists yet, so the two sides can drift silently. Resolve by
 either introducing a `packages/shared` workspace package with the event type union (and
 importing it from both apps), or by duplicating the exact union on the frontend and
-keeping the two manually in sync until compile/install events are actually emitted and
-consumed.
+keeping the two manually in sync. **Now fully load-bearing:** the Compile module and
+Resource Resolver (feature/projects-and-compile) emit real `compile.started` /
+`compile.finished` / `install.queued` / `install.started` / `install.finished` /
+`install.failed` events over `/api/events`. `font.*` events are still unimplemented
+(font resolution is postponed — see plan.md).
+
+## Profiles and Projects CRUD + file endpoints
+
+Implemented on the backend (`apps/backend/src/modules/profiles`,
+`apps/backend/src/modules/projects`), feature/projects-and-compile branch:
+
+- `GET/POST /api/profiles`
+- `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`
+- `GET/PUT/DELETE /api/projects/:id/files/*` (binary bodies via
+  `application/octet-stream`)
+
+Nothing in the frontend calls any of these yet — the file tree, project list, and
+profile picker UI are all still placeholders. Remove each endpoint's entry here once
+a frontend consumer exists for it, or fold this into a single "frontend data layer"
+contract item if several land together.
+
+## Compile endpoints
+
+Implemented on the backend (`apps/backend/src/modules/compile`),
+feature/projects-and-compile branch:
+
+- `POST /api/projects/:id/compile` — compile `.tex` and `.md` (via pandoc, through
+  a dedicated Lua filter that rewrites `.svg` image references to `.pdf` since
+  SVGs are pre-converted — `docker/pandoc-filters/svg-to-pdf.lua`), with a
+  reactive retry loop (architecture.md section 5.3/6.2): on a missing-package
+  error, resolves the file to a TeX Live package via a build-time index and
+  installs it through `tlmgr`, then retries, capped by a time budget
+  (`COMPILE_RETRY_BUDGET_MS`) and by never attempting the same missing file
+  twice in one compile. Returns the parsed log result (`success`, `diagnostics`,
+  `missingFiles`, raw `log`, `pdfPath`, `timedOut`) plus an `installs` array
+  (`{ packageName, installed, message? }` per package the retry loop
+  attempted) synchronously in the response body, in addition to the
+  `compile.*`/`install.*` SSE events (compile events always emitted, even if a
+  pre-step like pandoc throws).
+- `GET /api/projects/:id/output.pdf` — streams the most recent compiled PDF.
+
+Not implemented yet: any frontend consumer (compile button, PDF preview,
+structured log display, install progress).
