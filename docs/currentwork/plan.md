@@ -18,14 +18,25 @@ any filesystem path, full Projects CRUD + file CRUD (`GET/PUT/DELETE
 bodyLimit. 26 unit tests, full verify suite green. Logged the two new unconsumed
 endpoint groups in docs/contracts/api.md.
 
-## Milestone 2: single-run compile
-- [ ] Fixture project in /data with: an `\input{...}`, a project image, and a pre-converted SVG — confirms whether architecture.md section 5.1's `-outdir`/`-auxdir`-against-/data design actually keeps the project directory clean (prior verification only tested a single top-level SVG, not `\input` or minted's `_minted/` leaking into /data)
-- [ ] If the file-listing-unchanged assertion fails: switch to running with CWD = work dir + `TEXINPUTS` pointing at the project dir, and update architecture.md section 5.1 accordingly (ask before committing to this change, rule 5)
-- [ ] POST /api/projects/:id/compile (single pass, no retry yet): spawn latexmk detached, kill process group on timeout, `-norc -interaction=nonstopmode -file-line-error -shell-restricted`, `max_print_line=10000`
-- [ ] Per-project compile queue (concurrency 1, p-queue) + global concurrency cap
-- [ ] Log parser (built from real captured logs, not assumed formats) + GET /api/projects/:id/output.pdf
-- [ ] compile.started / compile.finished SSE events wired to the real EventBusService
-- [ ] End-to-end container test: create project via API, PUT files, POST compile, GET output.pdf
+## Milestone 2: single-run compile — done, committed
+Implemented and verified end-to-end through the real API on fresh container volumes:
+- `.tex` and `.md` (via pandoc) single-pass compile, `POST /api/projects/:id/compile` + `GET /api/projects/:id/output.pdf`
+- cwd=project dir + `TEXINPUTS` including the work dir (§5.1 updated — `-outdir`/`-auxdir` alone isn't enough for `\input` to resolve)
+- SVG pre-conversion (native `.tex` and Markdown via a Lua filter rewriting `.svg`→`.pdf`, `docker/pandoc-filters/svg-to-pdf.lua`)
+- Per-project compile queue (concurrency 1) + global cap, engine mapping (pdflatex/xelatex/lualatex) validated at project create/update
+- `mainFile`/`engine` validated against an allowlist before ever reaching a spawned command line (rejects traversal, option-injection like `-pdflatex=...`)
+- Log parser from real captured logs; stdout/stderr drained (not piped-and-ignored, which deadlocked large documents) with a bounded diagnostic tail
+- Exit-code-driven success + log-mtime check, so a failed run never reports a stale previous compile's log as this run's result
+- `compile.started`/`compile.finished` SSE events, always emitted including on pre-step (pandoc) failure
+- 52 unit tests (including compile-validation, stale-artifact and pipe-related regressions), full verify + e2e suite green
+
+## Milestone 3: reactive retry loop + package resolution
+- [ ] File→package index built at image build time from the pinned snapshot's texlive.tlpdb (check tlpdb name/runfiles line format first) — not `tlmgr search` per miss (architecture.md section 6.2)
+- [ ] Retry loop capped by "no new install in last iteration" / time budget, not fixed count (section 5.3)
+- [ ] Resource Resolver module: missing-package detection from log, install via tlmgr through the Job Queue
+- [ ] install.queued / install.started / install.finished / install.failed SSE events
+- [ ] After a tlmgr install with unchanged sources, check whether latexmk reports "up-to-date" instead of rerunning — if so, retry passes need `-g` to force a fresh pass
+- [ ] End-to-end test: polyglossia-needing document compiled through the API with zero packages pre-installed
 
 ## Milestone 3: reactive retry loop + package resolution
 - [ ] File→package index built at image build time from the pinned snapshot's texlive.tlpdb (check tlpdb name/runfiles line format first) — not `tlmgr search` per miss (architecture.md section 6.2)

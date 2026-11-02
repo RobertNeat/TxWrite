@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../common/database/database.service.js';
 import { ProfilesService } from '../profiles/profiles.service.js';
 import { ProjectsService } from './projects.service.js';
@@ -51,6 +51,40 @@ describe('ProjectsService', () => {
     expect(() =>
       projects.create({ name: 'Orphan', ownerProfileId: 'missing' }),
     ).toThrow();
+  });
+
+  it('rejects an invalid engine on create', () => {
+    expect(() =>
+      projects.create({
+        name: 'Bad',
+        ownerProfileId: ownerId,
+        engine: 'sh; rm -rf /',
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects an unsafe main file on create', () => {
+    expect(() =>
+      projects.create({
+        name: 'Bad',
+        ownerProfileId: ownerId,
+        mainFile: '../outside.tex',
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects an invalid engine on update', () => {
+    const project = projects.create({ name: 'Paper', ownerProfileId: ownerId });
+    expect(() => projects.update(project.id, { engine: 'sh' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects an unsafe main file on update', () => {
+    const project = projects.create({ name: 'Paper', ownerProfileId: ownerId });
+    expect(() =>
+      projects.update(project.id, { mainFile: '-pdflatex=evil.tex' }),
+    ).toThrow(BadRequestException);
   });
 
   it('updates only the provided fields', () => {

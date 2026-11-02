@@ -142,6 +142,12 @@ ENV TL_SNAPSHOT_KEY=${TL_SNAPSHOT_KEY}
 COPY docker/texlive-fonts.conf /etc/fonts/conf.d/09-texlive.conf
 RUN fc-cache -f
 
+# App-owned pandoc Lua filter (not user-supplied) that rewrites .svg image
+# references to .pdf, since every project SVG is pre-converted to PDF before
+# compile (architecture.md section 8) — without it, pandoc emits \includesvg for
+# .svg paths, which needs the svg package and Inkscape via shell-escape.
+COPY docker/pandoc-filters /opt/app/pandoc-filters
+
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/backend/package.json apps/backend/package.json
 RUN corepack enable \

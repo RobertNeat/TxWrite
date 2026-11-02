@@ -1,6 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../common/database/database.service.js';
+import {
+  isValidEngine,
+  isValidMainFile,
+} from '../../common/compile-validation.js';
 import type { Project } from './project.entity.js';
 
 interface ProjectRow {
@@ -45,19 +53,22 @@ export class ProjectsService {
   constructor(private readonly database: DatabaseService) {}
 
   create(input: CreateProjectInput): Project {
+    const engine = input.engine ?? 'pdflatex';
+    const mainFile = input.mainFile ?? 'main.tex';
+    if (!isValidEngine(engine)) {
+      throw new BadRequestException(`Invalid engine: ${engine}`);
+    }
+    if (!isValidMainFile(mainFile)) {
+      throw new BadRequestException(`Invalid main file: ${mainFile}`);
+    }
+
     const id = randomUUID();
     this.database.db
       .prepare(
         `INSERT INTO projects (id, name, owner_profile_id, engine, main_file)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(
-        id,
-        input.name,
-        input.ownerProfileId,
-        input.engine ?? 'pdflatex',
-        input.mainFile ?? 'main.tex',
-      );
+      .run(id, input.name, input.ownerProfileId, engine, mainFile);
     return this.findByIdOrThrow(id);
   }
 
@@ -93,10 +104,16 @@ export class ProjectsService {
       values.push(input.name);
     }
     if (input.engine !== undefined) {
+      if (!isValidEngine(input.engine)) {
+        throw new BadRequestException(`Invalid engine: ${input.engine}`);
+      }
       fields.push('engine = ?');
       values.push(input.engine);
     }
     if (input.mainFile !== undefined) {
+      if (!isValidMainFile(input.mainFile)) {
+        throw new BadRequestException(`Invalid main file: ${input.mainFile}`);
+      }
       fields.push('main_file = ?');
       values.push(input.mainFile);
     }
