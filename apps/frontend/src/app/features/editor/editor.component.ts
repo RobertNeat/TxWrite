@@ -57,6 +57,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private view: import('@codemirror/view').EditorView | null = null;
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
+  private savePendingForPath: string | null = null;
   private viewReady: Promise<void> | null = null;
   private loadedPath: string | null = null;
 
@@ -77,16 +78,10 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private async createView(): Promise<void> {
     const { EditorView, basicSetup } = await import('codemirror');
+    const { EditorState } = await import('@codemirror/state');
     this.view = new EditorView({
       doc: '',
-      extensions: [
-        basicSetup,
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            this.scheduleSave();
-          }
-        }),
-      ],
+      extensions: [basicSetup, EditorState.readOnly.of(true)],
       parent: this.host.nativeElement,
     });
   }
@@ -97,11 +92,16 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       return;
     }
     if (!path) {
-      this.clear();
+      await this.clear();
       return;
     }
     if (path === this.loadedPath) {
       return;
+    }
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+      await this.save();
     }
     const [{ EditorState }, languageExtension] = await Promise.all([
       import('@codemirror/state'),
@@ -118,7 +118,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
           languageExtension,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
-              this.scheduleSave();
+              this.scheduleSave(path);
             }
           }),
         ],
@@ -144,34 +144,38 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.view.focus();
   }
 
-  private clear(): void {
+  private async clear(): Promise<void> {
     if (!this.view || this.loadedPath === null) {
       return;
     }
     this.loadedPath = null;
-    this.view.dispatch({
-      changes: { from: 0, to: this.view.state.doc.length, insert: '' },
-    });
+    const { EditorState } = await import('@codemirror/state');
+    this.view.setState(
+      EditorState.create({ doc: '', extensions: [EditorState.readOnly.of(true)] }),
+    );
   }
 
-  private scheduleSave(): void {
+  private scheduleSave(path: string): void {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
+    this.savePendingForPath = path;
     this.saveTimeout = setTimeout(() => void this.save(), SAVE_DEBOUNCE_MS);
   }
 
   private async save(): Promise<void> {
-    const path = this.filePath();
+    const path = this.savePendingForPath;
     if (!this.view || !path) {
       return;
     }
+    this.savePendingForPath = null;
     await this.api.writeFile(this.projectId(), path, this.view.state.doc.toString());
   }
 
   ngOnDestroy(): void {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
+      void this.save();
     }
     this.view?.destroy();
   }

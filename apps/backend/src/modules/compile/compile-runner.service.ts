@@ -161,6 +161,17 @@ export class CompileRunnerService {
         };
       }
 
+      // Sources unchanged since a *previous failed* compile: latexmk still
+      // exits non-zero to flag that the last known state is broken, but skips
+      // rewriting the .log, so outputTail is just its own cached "gave an
+      // error in previous invocation" meta-message, not the actual error.
+      // Force one fresh pass so the user sees a real, current diagnostic.
+      if (!timedOut && !options.forceRebuild) {
+        return this.runOnce(projectId, mainFile, engine, {
+          forceRebuild: true,
+        });
+      }
+
       return {
         success: false,
         diagnostics: outputTail

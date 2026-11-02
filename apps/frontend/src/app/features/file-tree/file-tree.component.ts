@@ -109,6 +109,8 @@ export class FileTreeComponent implements OnInit {
     await this.api.writeFile(this.projectId(), path, '');
     this.newPath = '';
     await this.refresh();
+    this.selectedPath.set(path);
+    this.fileOpened.emit(path);
   }
 
   async rename(entry: ProjectFileEntry): Promise<void> {
