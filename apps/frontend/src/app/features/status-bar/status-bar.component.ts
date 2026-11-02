@@ -5,7 +5,7 @@ import { EventStreamService } from '../../core/events/event-stream.service.js';
   selector: 'app-status-bar',
   standalone: true,
   template: `
-    <span class="status" [class.connected]="eventStream.connected()">
+    <span id="status-bar-connection" class="status" [class.connected]="eventStream.connected()">
       {{ eventStream.connected() ? 'connected' : 'disconnected' }}
     </span>
   `,

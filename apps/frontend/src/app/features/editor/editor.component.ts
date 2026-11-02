@@ -3,7 +3,7 @@ import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild } from '@ang
 @Component({
   selector: 'app-editor',
   standalone: true,
-  template: `<div #host class="editor-host"></div>`,
+  template: `<div id="editor-host" #host class="editor-host"></div>`,
   styles: [
     `
       :host,

@@ -1,13 +1,13 @@
-<div class="layout">
-  <header class="topbar">
-    <span class="brand">{{ title() }}</span>
-    <app-status-bar />
+<div id="app-layout" class="layout">
+  <header id="app-topbar" class="topbar">
+    <span id="app-brand" class="brand">{{ title() }}</span>
+    <app-status-bar id="app-status-bar" />
   </header>
-  <div class="workspace">
-    <aside class="file-tree-pane">File tree (placeholder)</aside>
-    <main class="editor-pane">
+  <div id="app-workspace" class="workspace">
+    <aside id="file-tree-pane" class="file-tree-pane">File tree (placeholder)</aside>
+    <main id="editor-pane" class="editor-pane">
       <router-outlet />
     </main>
-    <aside class="pdf-preview-pane">PDF preview (placeholder)</aside>
+    <aside id="pdf-preview-pane" class="pdf-preview-pane">PDF preview (placeholder)</aside>
   </div>
 </div>
