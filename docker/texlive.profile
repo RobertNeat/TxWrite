@@ -1,0 +1,13 @@
+selected_scheme scheme-basic
+TEXDIR /opt/texlive
+TEXMFCONFIG ~/.texlive/texmf-config
+TEXMFHOME ~/texmf
+TEXMFLOCAL /opt/texlive/texmf-local
+TEXMFSYSCONFIG /opt/texlive/texmf-config
+TEXMFSYSVAR /opt/texlive/texmf-var
+TEXMFVAR ~/.texlive/texmf-var
+instopt_adjustpath 0
+instopt_letter 0
+tlpdbopt_install_docfiles 0
+tlpdbopt_install_srcfiles 0
+tlpdbopt_create_formats 1
