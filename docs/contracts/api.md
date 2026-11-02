@@ -68,5 +68,8 @@ feature/projects-and-compile branch:
 
 `POST /compile` consumed by the compile button (CompilePanelComponent), which
 also renders `installs`/`diagnostics` from the synchronous response and a live
-log from the `compile.*`/`install.*` SSE events. `GET /output.pdf` still has no
-frontend consumer — PDF preview is Milestone 5, not built yet.
+log from the `compile.*`/`install.*` SSE events. `GET /output.pdf` consumed by
+PdfPreviewComponent (renders page 1 via pdf.js), refreshed when a compile
+response's `pdfPath` is non-null.
+
+Nothing left unconsumed in this section.

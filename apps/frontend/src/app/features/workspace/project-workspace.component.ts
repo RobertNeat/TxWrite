@@ -1,14 +1,16 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '../../core/api/api.service.js';
+import type { CompileResult } from '../../core/api/api.types.js';
 import { FileTreeComponent } from '../file-tree/file-tree.component.js';
 import { EditorComponent, type JumpTarget } from '../editor/editor.component.js';
 import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
+import { PdfPreviewComponent } from '../pdf-preview/pdf-preview.component.js';
 
 @Component({
   selector: 'app-project-workspace',
   standalone: true,
-  imports: [FileTreeComponent, EditorComponent, CompilePanelComponent],
+  imports: [FileTreeComponent, EditorComponent, CompilePanelComponent, PdfPreviewComponent],
   template: `
     <div id="project-workspace" class="project-workspace">
       <aside id="file-tree-pane" class="file-tree-pane">
@@ -26,8 +28,11 @@ import { CompilePanelComponent } from '../compile-panel/compile-panel.component.
           [projectId]="projectId()"
           [isMarkdownProject]="isMarkdownProject()"
           (jumpToFile)="jumpToFile($event)"
+          (compiled)="onCompiled($event)"
         />
-        <div id="pdf-preview-pane" class="pdf-preview-pane">PDF preview (placeholder)</div>
+        <div id="pdf-preview-pane" class="pdf-preview-pane">
+          <app-pdf-preview [projectId]="projectId()" [refreshToken]="pdfRefreshToken()" />
+        </div>
       </aside>
     </div>
   `,
@@ -67,6 +72,7 @@ export class ProjectWorkspaceComponent implements OnInit {
   protected readonly selectedPath = signal<string | null>(null);
   protected readonly jumpTarget = signal<JumpTarget | null>(null);
   protected readonly isMarkdownProject = signal(false);
+  protected readonly pdfRefreshToken = signal(0);
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('projectId') ?? '';
@@ -85,5 +91,11 @@ export class ProjectWorkspaceComponent implements OnInit {
   jumpToFile(target: JumpTarget): void {
     this.selectedPath.set(target.path);
     this.jumpTarget.set(target);
+  }
+
+  onCompiled(result: CompileResult): void {
+    if (result.pdfPath) {
+      this.pdfRefreshToken.update((n) => n + 1);
+    }
   }
 }

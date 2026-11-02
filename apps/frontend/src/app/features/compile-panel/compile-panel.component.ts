@@ -156,7 +156,7 @@ export class CompilePanelComponent implements OnInit {
   readonly projectId = input.required<string>();
   readonly isMarkdownProject = input<boolean>(false);
   readonly jumpToFile = output<JumpTarget>();
-  readonly compiled = output<void>();
+  readonly compiled = output<CompileResult>();
 
   protected readonly compiling = signal(false);
   protected readonly lastResult = signal<CompileResult | null>(null);
@@ -191,7 +191,7 @@ export class CompilePanelComponent implements OnInit {
     try {
       const result = await this.api.compile(this.projectId());
       this.lastResult.set(result);
-      this.compiled.emit();
+      this.compiled.emit(result);
     } finally {
       this.compiling.set(false);
     }

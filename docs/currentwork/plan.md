@@ -24,7 +24,7 @@ Implemented and verified end-to-end through the real API: GET /api/projects/:id/
 GET /api/projects/:id/output.pdf (confirmed via curl -I). 8 new unit tests, full
 verify suite green. docs/contracts/api.md updated.
 
-## Milestone 2: project shell — done, verified live, pending commit
+## Milestone 2: project shell — done, committed
 Frontend API service (fetch wrapper mirroring backend DTOs/AppEventType, manual
 sync, no packages/shared yet — revisit if drift becomes a problem), profile picker
 (list + create), project list + create (name, engine, mainFile), routing
@@ -33,9 +33,9 @@ sync, no packages/shared yet — revisit if drift becomes a problem), profile pi
 Verified end-to-end in a real browser (profile create -> project create -> open ->
 editor route, Polish UI, SSE connected, no console errors). `pnpm run verify` green.
 Every element in the new templates has an explicit id attribute (see memory:
-feedback_html_element_ids). Still needs a commit.
+feedback_html_element_ids).
 
-## Milestone 3: file tree + editor — done, verified live, pending commit
+## Milestone 3: file tree + editor — done, committed
 File tree component (GET /files listing, create via PUT with empty content,
 rename via POST /files/move, delete via DELETE /files/*). Editor: language mode
 by extension (.md -> @codemirror/lang-markdown, .tex/.sty/.cls/.bib -> stex via
@@ -51,7 +51,7 @@ create/open/edit/save/reload-persists for both .tex and .md, syntax highlighting
 confirmed for both modes, delete-while-open clears the editor and does not
 resurrect the file via a stray debounced save. `pnpm run verify` green.
 
-## Milestone 4: compile + log + status bar — done, verified live, pending commit
+## Milestone 4: compile + log + status bar — done, committed
 CompilePanelComponent: compile button (disabled while in flight, calls POST
 /compile), live running log from EventStreamService (extended to keep a capped
 history of events, not just the latest, filtered by projectId), structured
@@ -67,10 +67,22 @@ Verified live: successful compile shows "Kompilacja udana" + log; a broken
 ./main.tex:4 diagnostic, and clicking it moves the editor cursor to line 4.
 `pnpm run verify` green, no console errors.
 
-## Milestone 5: PDF preview
-- [ ] pdf.js integration: worker asset wired via angular.json, GlobalWorkerOptions.workerSrc set (verify pdfjs-dist 6.x's actual worker filename/ESM entry before assuming)
-- [ ] Preview pane loads GET /output.pdf, refreshes after each successful compile.finished event (cache-busted via the no-store header from Milestone 1)
-- [ ] Verify via docker compose build + the built SPA served from the container (not just `ng serve`), since the worker asset path can differ between dev and the built bundle
+## Milestone 5: PDF preview — done, verified in real docker build
+PdfPreviewComponent: lazy-loads pdfjs-dist, renders page 1 to a <canvas>.
+`new URL('pdfjs-dist/...', import.meta.url)` worker bundling does NOT work with
+esbuild (fails to resolve a bare package specifier inside new URL() — only
+relative paths get static-asset treatment) — fixed by copying
+node_modules/pdfjs-dist/build/pdf.worker.mjs to dist output `/pdfjs/` via an
+angular.json assets entry, and setting `GlobalWorkerOptions.workerSrc` to the
+plain runtime path `/pdfjs/pdf.worker.mjs` (no bundler resolution involved, so
+dev and production builds behave identically). Preview refreshes when
+CompilePanelComponent's `compiled` output reports a non-null `pdfPath` (not on
+every compile attempt — a failed compile with no new PDF shouldn't flash the
+preview). Cache-busted via `?t=timestamp` query param on top of the existing
+no-store header. Verified against a real `docker compose build` + the production
+SPA served from the container on :3000 (not `ng serve`): compiled PDF rendered
+correctly in the <canvas>, recompiling after an edit refreshed the preview with
+the new content, no console errors.
 
 # Dev loop for this branch
 `docker compose up` (TeX toolchain, compile, only works inside the container) in one
