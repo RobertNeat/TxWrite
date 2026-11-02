@@ -51,11 +51,21 @@ create/open/edit/save/reload-persists for both .tex and .md, syntax highlighting
 confirmed for both modes, delete-while-open clears the editor and does not
 resurrect the file via a stray debounced save. `pnpm run verify` green.
 
-## Milestone 4: compile + log + status bar
-- [ ] Compile button: disabled while in flight, calls POST /compile
-- [ ] Live status during compile: subscribe to SSE, surface install.queued/started/finished/failed and compile.started/finished as a running log
-- [ ] Structured diagnostics list, clickable to jump to file:line in the editor (normalize paths: diagnostics can reference the generated .tex for Markdown projects per architecture.md section 5.2 — show a note, don't silently misroute)
-- [ ] Status bar wired to the real SSE connection state (already has a stub)
+## Milestone 4: compile + log + status bar — done, verified live, pending commit
+CompilePanelComponent: compile button (disabled while in flight, calls POST
+/compile), live running log from EventStreamService (extended to keep a capped
+history of events, not just the latest, filtered by projectId), structured
+diagnostics list. Diagnostics are clickable to jump to file:line in the editor
+(EditorComponent gained a `jumpTarget` input) except for Markdown projects
+(mainFile ends in .md), where diagnostics reference the generated intermediate
+.tex per architecture.md section 5.2 — shown as a note instead of a broken
+jump link, since that file isn't in the project's file tree. Status bar now uses
+the existing status.connected/status.disconnected i18n keys instead of hardcoded
+English (was already wired to the real SSE connection state, just untranslated).
+Verified live: successful compile shows "Kompilacja udana" + log; a broken
+\undefinedcommandxyz line shows "Kompilacja nieudana", a clickable
+./main.tex:4 diagnostic, and clicking it moves the editor cursor to line 4.
+`pnpm run verify` green, no console errors.
 
 ## Milestone 5: PDF preview
 - [ ] pdf.js integration: worker asset wired via angular.json, GlobalWorkerOptions.workerSrc set (verify pdfjs-dist 6.x's actual worker filename/ESM entry before assuming)

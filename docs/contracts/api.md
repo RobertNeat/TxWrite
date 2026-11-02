@@ -66,5 +66,7 @@ feature/projects-and-compile branch:
   with `Cache-Control: no-store` (feature/frontend-wiring) so a recompile is
   never masked by a stale cached response.
 
-Not implemented yet: any frontend consumer (compile button, PDF preview,
-structured log display, install progress).
+`POST /compile` consumed by the compile button (CompilePanelComponent), which
+also renders `installs`/`diagnostics` from the synchronous response and a live
+log from the `compile.*`/`install.*` SSE events. `GET /output.pdf` still has no
+frontend consumer — PDF preview is Milestone 5, not built yet.

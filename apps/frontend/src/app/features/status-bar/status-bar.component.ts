@@ -1,12 +1,14 @@
 import { Component, OnInit } from '@angular/core';
 import { EventStreamService } from '../../core/events/event-stream.service.js';
+import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
 
 @Component({
   selector: 'app-status-bar',
   standalone: true,
+  imports: [TranslatePipe],
   template: `
     <span id="status-bar-connection" class="status" [class.connected]="eventStream.connected()">
-      {{ eventStream.connected() ? 'connected' : 'disconnected' }}
+      {{ (eventStream.connected() ? 'status.connected' : 'status.disconnected') | t }}
     </span>
   `,
   styles: [

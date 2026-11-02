@@ -14,6 +14,11 @@ import { ApiService } from '../../core/api/api.service.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 
+export interface JumpTarget {
+  path: string;
+  line: number;
+}
+
 function languageExtensionFor(path: string): Promise<Extension> {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   if (ext === 'md' || ext === 'markdown') {
@@ -46,6 +51,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   readonly projectId = input.required<string>();
   readonly filePath = input<string | null>(null);
+  readonly jumpTarget = input<JumpTarget | null>(null);
 
   @ViewChild('host', { static: true }) private host!: ElementRef<HTMLElement>;
 
@@ -61,10 +67,12 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   async ngOnChanges(changes: SimpleChanges): Promise<void> {
-    if (changes['filePath'] && this.viewReady) {
-      await this.viewReady;
-      await this.loadCurrentFile();
+    if (!this.viewReady || !(changes['filePath'] || changes['jumpTarget'])) {
+      return;
     }
+    await this.viewReady;
+    await this.loadCurrentFile();
+    await this.applyJumpTarget();
   }
 
   private async createView(): Promise<void> {
@@ -116,6 +124,24 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
         ],
       }),
     );
+  }
+
+  private async applyJumpTarget(): Promise<void> {
+    const target = this.jumpTarget();
+    if (!target || !this.view) {
+      return;
+    }
+    if (target.path !== this.filePath() || target.path !== this.loadedPath) {
+      return;
+    }
+    const { EditorView } = await import('codemirror');
+    const lineNumber = Math.min(Math.max(target.line, 1), this.view.state.doc.lines);
+    const line = this.view.state.doc.line(lineNumber);
+    this.view.dispatch({
+      selection: { anchor: line.from },
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    });
+    this.view.focus();
   }
 
   private clear(): void {
