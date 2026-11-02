@@ -33,6 +33,13 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
 - `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`
 - `GET/PUT/DELETE /api/projects/:id/files/*` (binary bodies via
   `application/octet-stream`)
+- `GET /api/projects/:id/files` (feature/frontend-wiring) — recursive listing,
+  `{ path: string, size: number, isDirectory: boolean }[]`, paths are `/`-joined
+  relative to the project root regardless of host OS. Symlinks that resolve
+  outside the project root are silently skipped (not listed, not descended into).
+- `POST /api/projects/:id/files/move` (feature/frontend-wiring) — body
+  `{ from: string, to: string }`, used for both rename and move. Both paths are
+  confinement-checked.
 
 Nothing in the frontend calls any of these yet — the file tree, project list, and
 profile picker UI are all still placeholders. Remove each endpoint's entry here once
@@ -57,7 +64,9 @@ feature/projects-and-compile branch:
   attempted) synchronously in the response body, in addition to the
   `compile.*`/`install.*` SSE events (compile events always emitted, even if a
   pre-step like pandoc throws).
-- `GET /api/projects/:id/output.pdf` — streams the most recent compiled PDF.
+- `GET /api/projects/:id/output.pdf` — streams the most recent compiled PDF,
+  with `Cache-Control: no-store` (feature/frontend-wiring) so a recompile is
+  never masked by a stale cached response.
 
 Not implemented yet: any frontend consumer (compile button, PDF preview,
 structured log display, install progress).

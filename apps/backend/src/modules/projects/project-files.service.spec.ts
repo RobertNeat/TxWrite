@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UnsafePathError } from '../../common/files/safe-path.js';
@@ -71,5 +71,81 @@ describe('ProjectFilesService', () => {
 
   it('rejects an invalid project id', () => {
     expect(() => service.projectDir('not-a-uuid')).toThrow();
+  });
+
+  describe('listFiles', () => {
+    it('returns an empty array for a project with no files', () => {
+      expect(service.listFiles(projectId)).toEqual([]);
+    });
+
+    it('lists files and directories recursively', () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+      service.writeFile(projectId, 'images/figure.svg', Buffer.from('<svg/>'));
+
+      const entries = service.listFiles(projectId);
+      const byPath = Object.fromEntries(entries.map((e) => [e.path, e]));
+
+      expect(byPath['main.tex']).toMatchObject({
+        isDirectory: false,
+        size: 1,
+      });
+      expect(byPath['images']).toMatchObject({ isDirectory: true });
+      expect(byPath['images/figure.svg']).toMatchObject({
+        isDirectory: false,
+        size: 6,
+      });
+    });
+
+    it('skips a symlink that escapes the project root', () => {
+      const outsideDir = mkdtempSync(join(tmpdir(), 'outside-'));
+      const projectDir = service.projectDir(projectId);
+      symlinkSync(outsideDir, join(projectDir, 'escape'), 'junction');
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+
+      const entries = service.listFiles(projectId);
+      expect(entries.map((e) => e.path)).toEqual(['main.tex']);
+
+      rmSync(outsideDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('moveFile', () => {
+    it('moves a file to a new path', () => {
+      service.writeFile(projectId, 'old.tex', Buffer.from('hello'));
+      service.moveFile(projectId, 'old.tex', 'new.tex');
+
+      expect(service.readFile(projectId, 'new.tex').toString()).toBe('hello');
+      expect(() => service.readFile(projectId, 'old.tex')).toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('creates intermediate directories for the destination', () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+      service.moveFile(projectId, 'main.tex', 'chapters/main.tex');
+      expect(service.readFile(projectId, 'chapters/main.tex').toString()).toBe(
+        'x',
+      );
+    });
+
+    it('throws NotFoundException when the source does not exist', () => {
+      expect(() => service.moveFile(projectId, 'missing.tex', 'x.tex')).toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('rejects traversal in the from path', () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+      expect(() => service.moveFile(projectId, '../main.tex', 'x.tex')).toThrow(
+        UnsafePathError,
+      );
+    });
+
+    it('rejects traversal in the to path', () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+      expect(() => service.moveFile(projectId, 'main.tex', '../x.tex')).toThrow(
+        UnsafePathError,
+      );
+    });
   });
 });

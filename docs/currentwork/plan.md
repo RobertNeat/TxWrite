@@ -1,48 +1,57 @@
 # Current session plan
 
-Branch: feature/projects-and-compile — zero-to-working compile: SQLite schema +
-Projects CRUD/file storage, then a real `POST /api/projects/:id/compile` for `.tex`
-(with `.md` via pandoc as a thin pre-step), log parsing, reactive package retry loop,
-and `compile.*`/`install.*` SSE events. Three milestones, one commit each.
+Branch: feature/frontend-wiring — wire the existing backend API into a usable UI:
+profile picker, project list/create, file tree, editor with language modes, compile
+button with live install/compile status, PDF preview. First branch where the product
+is actually usable end to end, not just via curl.
 
-In scope: minimal profiles, projects + file CRUD, `.tex`/`.md` compile, log parser,
-retry loop with package resolution, SSE events for compile/install.
-Out of scope (stays postponed): zip import/export, upload, templates, prefetch
-watcher, font resolution, frontend wiring, toolchain info in /api/health.
+Previous branches (feature/texlive-toolchain, feature/projects-and-compile) are done
+and merged to main — see git log for details, no longer tracked here.
 
-## Milestone 1: storage, migrations, Projects CRUD — done, committed
-Implemented: SQLite schema via `PRAGMA user_version` migrations (no migration
-library), Profiles + Projects tables, UUID project IDs validated before touching
-any filesystem path, full Projects CRUD + file CRUD (`GET/PUT/DELETE
-/api/projects/:id/files/*`) with path confinement, Fastify octet-stream parser +
-bodyLimit. 26 unit tests, full verify suite green. Logged the two new unconsumed
-endpoint groups in docs/contracts/api.md.
+In scope: profile picker + create, project list + create (engine/mainFile), file
+tree (list/create/rename-via-move/delete), editor load/save with .tex vs .md
+language modes, compile button + structured log + clickable diagnostics, PDF
+preview (pdf.js) refreshed after compile, status bar driven by SSE
+(compile.*/install.*), lightweight runtime-switchable PL/EN i18n (signal + JSON
+dictionary, no new dependency).
+Out of scope (stays postponed): file upload, zip import/export, templates, font
+settings, auto-compile on edit.
 
-## Milestone 2: single-run compile — done, committed
-Implemented and verified end-to-end through the real API on fresh container volumes:
-- `.tex` and `.md` (via pandoc) single-pass compile, `POST /api/projects/:id/compile` + `GET /api/projects/:id/output.pdf`
-- cwd=project dir + `TEXINPUTS` including the work dir (§5.1 updated — `-outdir`/`-auxdir` alone isn't enough for `\input` to resolve)
-- SVG pre-conversion (native `.tex` and Markdown via a Lua filter rewriting `.svg`→`.pdf`, `docker/pandoc-filters/svg-to-pdf.lua`)
-- Per-project compile queue (concurrency 1) + global cap, engine mapping (pdflatex/xelatex/lualatex) validated at project create/update
-- `mainFile`/`engine` validated against an allowlist before ever reaching a spawned command line (rejects traversal, option-injection like `-pdflatex=...`)
-- Log parser from real captured logs; stdout/stderr drained (not piped-and-ignored, which deadlocked large documents) with a bounded diagnostic tail
-- Exit-code-driven success + log-mtime check, so a failed run never reports a stale previous compile's log as this run's result
-- `compile.started`/`compile.finished` SSE events, always emitted including on pre-step (pandoc) failure
-- 52 unit tests (including compile-validation, stale-artifact and pipe-related regressions), full verify + e2e suite green
+## Milestone 1: backend prerequisites for the file tree — done, committed
+Implemented and verified end-to-end through the real API: GET /api/projects/:id/files
+(recursive listing, symlink-escape-safe), POST /api/projects/:id/files/move
+(rename/move, confinement-checked on both from and to), Cache-Control: no-store on
+GET /api/projects/:id/output.pdf (confirmed via curl -I). 8 new unit tests, full
+verify suite green. docs/contracts/api.md updated.
 
-## Milestone 3: reactive retry loop + package resolution — done, committed
-Implemented and verified end-to-end through the real API on fresh container volumes
-(zero packages pre-installed, confirmed via `kpsewhich`):
-- File→package index built at image build time (`docker/build-package-index.pl`) from the pinned snapshot's cached, GPG-verified remote tlpdb — runfiles only (docfiles/srcfiles excluded to avoid resolving generic names like example.tex), already-locally-installed packages excluded (so the kernel/biblatex/hyphenation can never be re-touched by a lazy install, section 6.6), one preferred package per file
-- Resource Resolver module: tlmgr user-mode install, serialized + deduplicated through the Job Queue (two concurrent compiles needing the same package share one install and one result)
-- Retry loop in CompileService: capped by time budget and by never re-attempting the same missing file twice in one compile (section 6.7); `-g` forces a fresh latexmk pass after an install so an unchanged-sources "up-to-date" result doesn't mask the newly-installed package
-- Fixed: latexmk's own legitimate "Nothing to do" (unchanged sources, exit 0) was being misreported as a failure by the log-mtime check from Milestone 2 — now only an actual non-zero exit before a log is produced counts as a failure
-- install.queued / install.started / install.finished / install.failed SSE events; `CompileResult` now includes an `installs` array
-- NETWORK_FETCH=false honored with the exact section 6.7 message, short-circuiting before any install attempt
-- Log parser: added the tikz-library-missing pattern (`architecture.md` section 6.2's own `tikzlibrarycd.code.tex` example) — wraps across lines without `max_print_line` set wide enough, checked for in both places
-- Runtime image was missing gnupg, so lazy installs were unverified despite the toolchain-branch commit claiming "both build stages" — fixed, confirmed `(verified)` in tlmgr output
-- 72 unit tests (dedup/outcome propagation, per-compile attempt tracking, NETWORK_FETCH short-circuit, tikz-library log fixture), full verify + e2e suite green
-- Verified: polyglossia (xelatex, lazy-installed) and tikz-cd (pdflatex, lazy-installed) documents compiled from zero via the real API; SSE event order correct; installed packages persist across container restart with zero re-install events; user tree stays limited to the actually-needed package (verified via `tlpkg/tlpobj` listing)
+## Milestone 2: project shell
+- [ ] Frontend API service (fetch wrapper) mirroring backend DTOs/AppEventType (manual sync, no packages/shared yet — revisit if drift becomes a problem)
+- [ ] Profile picker: list + create, persisted selection (localStorage, no auth)
+- [ ] Project list + create (name, engine, mainFile)
+- [ ] Routing by :projectId
+- [ ] i18n service: signal-based, PL default / EN switchable, JSON dictionaries, no new dependency
+
+## Milestone 3: file tree + editor
+- [ ] File tree component backed by GET /files, create/rename(move)/delete actions
+- [ ] Editor: language mode by extension (.md -> @codemirror/lang-markdown, .tex/.sty/.cls/.bib -> stex via @codemirror/legacy-modes), both already installed
+- [ ] Load file content on selection, save on edit (debounced) via PUT files/*
+
+## Milestone 4: compile + log + status bar
+- [ ] Compile button: disabled while in flight, calls POST /compile
+- [ ] Live status during compile: subscribe to SSE, surface install.queued/started/finished/failed and compile.started/finished as a running log
+- [ ] Structured diagnostics list, clickable to jump to file:line in the editor (normalize paths: diagnostics can reference the generated .tex for Markdown projects per architecture.md section 5.2 — show a note, don't silently misroute)
+- [ ] Status bar wired to the real SSE connection state (already has a stub)
+
+## Milestone 5: PDF preview
+- [ ] pdf.js integration: worker asset wired via angular.json, GlobalWorkerOptions.workerSrc set (verify pdfjs-dist 6.x's actual worker filename/ESM entry before assuming)
+- [ ] Preview pane loads GET /output.pdf, refreshes after each successful compile.finished event (cache-busted via the no-store header from Milestone 1)
+- [ ] Verify via docker compose build + the built SPA served from the container (not just `ng serve`), since the worker asset path can differ between dev and the built bundle
+
+# Dev loop for this branch
+`docker compose up` (TeX toolchain, compile, only works inside the container) in one
+terminal + `pnpm dev:frontend` in a separate terminal (proxy.conf.json already points
+`/api` at 127.0.0.1:3000). Stop both when done (rule 3). Do not run a combined
+parallel dev script (see memory: feedback_dev_servers).
 
 # Postponed for future sessions
 
@@ -52,6 +61,5 @@ Implemented and verified end-to-end through the real API on fresh container volu
 - Prefetch watcher logic
 - Template gallery content, zip import/export, file upload endpoint
 - Revisit ORM/query-builder choice once a maintained node:sqlite driver exists for drizzle-orm (or similar)
-- PDF preview component wiring (pdfjs-dist installed, not yet used)
-- Frontend wiring for any of the above — this branch is backend-only
+- Auto-compile on edit
 - See docs/contracts/api.md for open backend/frontend contract items

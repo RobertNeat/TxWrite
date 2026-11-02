@@ -12,7 +12,10 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProjectsService } from './projects.service.js';
-import { ProjectFilesService } from './project-files.service.js';
+import {
+  ProjectFilesService,
+  type ProjectFileEntry,
+} from './project-files.service.js';
 import { UnsafePathError } from '../../common/files/safe-path.js';
 import type { Project } from './project.entity.js';
 
@@ -27,6 +30,11 @@ interface UpdateProjectDto {
   name?: string;
   engine?: string;
   mainFile?: string;
+}
+
+interface MoveFileDto {
+  from?: string;
+  to?: string;
 }
 
 @Controller('projects')
@@ -73,6 +81,27 @@ export class ProjectsController {
     this.projectsService.delete(id);
     this.projectFiles.deleteProjectDir(id);
     return { id };
+  }
+
+  @Get(':id/files')
+  listFiles(@Param('id') id: string): ProjectFileEntry[] {
+    this.projectsService.findByIdOrThrow(id);
+    return this.projectFiles.listFiles(id);
+  }
+
+  @Post(':id/files/move')
+  moveFile(
+    @Param('id') id: string,
+    @Body() dto: MoveFileDto,
+  ): { from: string; to: string } {
+    this.projectsService.findByIdOrThrow(id);
+    const from = dto.from?.trim();
+    const to = dto.to?.trim();
+    if (!from || !to) {
+      throw new BadRequestException('from and to are required');
+    }
+    this.wrapUnsafePath(() => this.projectFiles.moveFile(id, from, to));
+    return { from, to };
   }
 
   @Get(':id/files/*')

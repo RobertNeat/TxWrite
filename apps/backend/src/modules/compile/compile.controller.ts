@@ -28,6 +28,12 @@ export class CompileController {
     if (!existsSync(pdfPath)) {
       throw new NotFoundException('No compiled PDF for this project yet');
     }
-    reply.type('application/pdf').send(createReadStream(pdfPath));
+    // Without this, the browser (and pdf.js) can serve a cached PDF from
+    // before the latest compile, since this URL never changes between
+    // compiles.
+    reply
+      .header('Cache-Control', 'no-store')
+      .type('application/pdf')
+      .send(createReadStream(pdfPath));
   }
 }
