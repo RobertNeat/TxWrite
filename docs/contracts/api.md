@@ -20,3 +20,18 @@ either introducing a `packages/shared` workspace package with the event type uni
 importing it from both apps), or by duplicating the exact union on the frontend and
 keeping the two manually in sync until compile/install events are actually emitted and
 consumed.
+
+## Profiles and Projects CRUD + file endpoints
+
+Implemented on the backend (`apps/backend/src/modules/profiles`,
+`apps/backend/src/modules/projects`), feature/projects-and-compile branch:
+
+- `GET/POST /api/profiles`
+- `GET/POST /api/projects`, `GET/PUT/DELETE /api/projects/:id`
+- `GET/PUT/DELETE /api/projects/:id/files/*` (binary bodies via
+  `application/octet-stream`)
+
+Nothing in the frontend calls any of these yet — the file tree, project list, and
+profile picker UI are all still placeholders. Remove each endpoint's entry here once
+a frontend consumer exists for it, or fold this into a single "frontend data layer"
+contract item if several land together.
