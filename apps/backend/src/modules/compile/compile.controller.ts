@@ -8,15 +8,17 @@ import {
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { createReadStream, existsSync } from 'node:fs';
-import { CompileService } from './compile.service.js';
-import type { CompileResult } from './compile-runner.service.js';
+import {
+  CompileService,
+  type CompileResultWithInstalls,
+} from './compile.service.js';
 
 @Controller('projects/:id')
 export class CompileController {
   constructor(private readonly compileService: CompileService) {}
 
   @Post('compile')
-  async compile(@Param('id') id: string): Promise<CompileResult> {
+  async compile(@Param('id') id: string): Promise<CompileResultWithInstalls> {
     return this.compileService.compile(id);
   }
 

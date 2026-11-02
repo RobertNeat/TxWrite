@@ -66,6 +66,7 @@ export class CompileRunnerService {
     projectId: string,
     mainFile: string,
     engine = 'pdflatex',
+    options: { forceRebuild?: boolean } = {},
   ): Promise<CompileResult> {
     if (!isValidMainFile(mainFile)) {
       throw new Error(`Invalid main file: ${mainFile}`);
@@ -130,6 +131,7 @@ export class CompileRunnerService {
       texFileForLatexmk,
       texinputs,
       engineFlag,
+      options.forceRebuild ?? false,
     );
 
     const logWasRefreshed =
@@ -137,6 +139,28 @@ export class CompileRunnerService {
       (logMtimeBefore === null || statSync(logPath).mtimeMs > logMtimeBefore);
 
     if (!logWasRefreshed) {
+      // latexmk can legitimately skip rebuilding and never touch the .log when
+      // sources are unchanged since the last successful compile ("Nothing to
+      // do" / "up-to-date", exit 0) — that is a real success, just not one that
+      // produced a fresh log this run, so fall through to report the existing
+      // PDF rather than treating it as a failure. A genuine failure before
+      // latexmk gets far enough to write a log (e.g. missing main file) always
+      // exits non-zero, so only that case is reported as an error here.
+      const pdfProduced = existsSync(pdfPath);
+      if (exitCode === 0 && !timedOut && pdfProduced) {
+        const existingLog = existsSync(logPath)
+          ? readFileSync(logPath, 'utf8')
+          : '';
+        return {
+          success: true,
+          diagnostics: [],
+          missingFiles: [],
+          log: existingLog,
+          pdfPath,
+          timedOut: false,
+        };
+      }
+
       return {
         success: false,
         diagnostics: outputTail
@@ -168,6 +192,7 @@ export class CompileRunnerService {
     mainFile: string,
     texinputs: string,
     engineFlag: string,
+    forceRebuild: boolean,
   ): Promise<{
     exitCode: number | null;
     timedOut: boolean;
@@ -184,6 +209,12 @@ export class CompileRunnerService {
           `-auxdir=${workDir}`,
           '-interaction=nonstopmode',
           '-file-line-error',
+          // After a lazy package install, the source files haven't changed, so
+          // latexmk may otherwise decide the existing output is already
+          // up-to-date and skip rebuilding — even though the previous attempt
+          // failed because the package was missing. -g forces a fresh pass on
+          // a retry so the newly-installed package actually gets picked up.
+          ...(forceRebuild ? ['-g'] : []),
           mainFile,
         ],
         {

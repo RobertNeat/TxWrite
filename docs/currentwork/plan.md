@@ -30,20 +30,19 @@ Implemented and verified end-to-end through the real API on fresh container volu
 - `compile.started`/`compile.finished` SSE events, always emitted including on pre-step (pandoc) failure
 - 52 unit tests (including compile-validation, stale-artifact and pipe-related regressions), full verify + e2e suite green
 
-## Milestone 3: reactive retry loop + package resolution
-- [ ] File→package index built at image build time from the pinned snapshot's texlive.tlpdb (check tlpdb name/runfiles line format first) — not `tlmgr search` per miss (architecture.md section 6.2)
-- [ ] Retry loop capped by "no new install in last iteration" / time budget, not fixed count (section 5.3)
-- [ ] Resource Resolver module: missing-package detection from log, install via tlmgr through the Job Queue
-- [ ] install.queued / install.started / install.finished / install.failed SSE events
-- [ ] After a tlmgr install with unchanged sources, check whether latexmk reports "up-to-date" instead of rerunning — if so, retry passes need `-g` to force a fresh pass
-- [ ] End-to-end test: polyglossia-needing document compiled through the API with zero packages pre-installed
-
-## Milestone 3: reactive retry loop + package resolution
-- [ ] File→package index built at image build time from the pinned snapshot's texlive.tlpdb (check tlpdb name/runfiles line format first) — not `tlmgr search` per miss (architecture.md section 6.2)
-- [ ] Retry loop capped by "no new install in last iteration" / time budget, not fixed count (section 5.3)
-- [ ] Resource Resolver module: missing-package detection from log, install via tlmgr through the Job Queue
-- [ ] install.queued / install.started / install.finished / install.failed SSE events
-- [ ] End-to-end test: polyglossia-needing document compiled through the API with zero packages pre-installed
+## Milestone 3: reactive retry loop + package resolution — done, committed
+Implemented and verified end-to-end through the real API on fresh container volumes
+(zero packages pre-installed, confirmed via `kpsewhich`):
+- File→package index built at image build time (`docker/build-package-index.pl`) from the pinned snapshot's cached, GPG-verified remote tlpdb — runfiles only (docfiles/srcfiles excluded to avoid resolving generic names like example.tex), already-locally-installed packages excluded (so the kernel/biblatex/hyphenation can never be re-touched by a lazy install, section 6.6), one preferred package per file
+- Resource Resolver module: tlmgr user-mode install, serialized + deduplicated through the Job Queue (two concurrent compiles needing the same package share one install and one result)
+- Retry loop in CompileService: capped by time budget and by never re-attempting the same missing file twice in one compile (section 6.7); `-g` forces a fresh latexmk pass after an install so an unchanged-sources "up-to-date" result doesn't mask the newly-installed package
+- Fixed: latexmk's own legitimate "Nothing to do" (unchanged sources, exit 0) was being misreported as a failure by the log-mtime check from Milestone 2 — now only an actual non-zero exit before a log is produced counts as a failure
+- install.queued / install.started / install.finished / install.failed SSE events; `CompileResult` now includes an `installs` array
+- NETWORK_FETCH=false honored with the exact section 6.7 message, short-circuiting before any install attempt
+- Log parser: added the tikz-library-missing pattern (`architecture.md` section 6.2's own `tikzlibrarycd.code.tex` example) — wraps across lines without `max_print_line` set wide enough, checked for in both places
+- Runtime image was missing gnupg, so lazy installs were unverified despite the toolchain-branch commit claiming "both build stages" — fixed, confirmed `(verified)` in tlmgr output
+- 72 unit tests (dedup/outcome propagation, per-compile attempt tracking, NETWORK_FETCH short-circuit, tikz-library log fixture), full verify + e2e suite green
+- Verified: polyglossia (xelatex, lazy-installed) and tikz-cd (pdflatex, lazy-installed) documents compiled from zero via the real API; SSE event order correct; installed packages persist across container restart with zero re-install events; user tree stays limited to the actually-needed package (verified via `tlpkg/tlpobj` listing)
 
 # Postponed for future sessions
 

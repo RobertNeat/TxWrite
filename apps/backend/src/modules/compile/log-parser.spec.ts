@@ -48,4 +48,13 @@ describe('parseCompileLog', () => {
     const result = parseCompileLog(log, true);
     expect(result.success).toBe(false);
   });
+
+  it('extracts the missing tikz library file from a real wrapped tikz error', () => {
+    const log = readFixture('tikz-library-missing.log');
+    const result = parseCompileLog(log, true);
+    expect(result.success).toBe(false);
+    expect(result.missingFiles).toContainEqual({
+      fileName: 'tikzlibrarycd.code.tex',
+    });
+  });
 });
