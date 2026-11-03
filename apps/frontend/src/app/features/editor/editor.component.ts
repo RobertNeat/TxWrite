@@ -12,6 +12,12 @@ import {
 } from '@angular/core';
 import type { Extension } from '@codemirror/state';
 import { ApiService } from '../../core/api/api.service.js';
+import {
+  type EditResult,
+  type HeadingLevel,
+  lineLevel,
+  modeFor,
+} from '../toolbar/toolbar.model.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 
@@ -64,6 +70,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   readonly filePath = input<string | null>(null);
   readonly jumpTarget = input<JumpTarget | null>(null);
   readonly contentChanged = output<{ path: string; content: string } | null>();
+  readonly headingLevelChanged = output<HeadingLevel>();
 
   @ViewChild('host', { static: true }) private host!: ElementRef<HTMLElement>;
 
@@ -142,11 +149,24 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
               this.scheduleSave(path);
               this.contentChanged.emit({ path, content: update.state.doc.toString() });
             }
+            if (update.docChanged || update.selectionSet) {
+              this.emitHeadingLevel(path);
+            }
           }),
         ],
       }),
     );
     this.contentChanged.emit({ path, content });
+    this.emitHeadingLevel(path);
+  }
+
+  private emitHeadingLevel(path: string): void {
+    if (!this.view) {
+      return;
+    }
+    const doc = this.view.state.doc.toString();
+    const pos = this.view.state.selection.main.head;
+    this.headingLevelChanged.emit(lineLevel(doc, pos, modeFor(path)));
   }
 
   private async applyJumpTarget(): Promise<void> {
@@ -165,6 +185,59 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
     });
     this.view.focus();
+  }
+
+  // ---------- public API for the formatting toolbar ----------
+
+  /** Whether the toolbar should be enabled: a loaded text file, not the binary placeholder view. */
+  isEditable(): boolean {
+    return this.view !== null && this.loadedPath !== null;
+  }
+
+  currentMode(): 'tex' | 'md' {
+    return modeFor(this.loadedPath ?? '');
+  }
+
+  /** Applies a pure (doc, selection) -> EditResult transform computed from the live document state. */
+  applyEdit(
+    compute: (doc: string, selectionFrom: number, selectionTo: number) => EditResult,
+  ): void {
+    if (!this.view || !this.loadedPath) {
+      return;
+    }
+    const doc = this.view.state.doc.toString();
+    const { main } = this.view.state.selection;
+    const result = compute(doc, main.from, main.to);
+    this.view.dispatch({
+      changes: { from: 0, to: doc.length, insert: result.text },
+      selection: { anchor: result.selectionFrom, head: result.selectionTo },
+    });
+    this.view.focus();
+  }
+
+  undo(): void {
+    this.execHistoryCommand('undo');
+  }
+
+  redo(): void {
+    this.execHistoryCommand('redo');
+  }
+
+  private execHistoryCommand(kind: 'undo' | 'redo'): void {
+    if (!this.view) {
+      return;
+    }
+    void import('@codemirror/commands').then((commands) => {
+      if (!this.view) {
+        return;
+      }
+      (kind === 'undo' ? commands.undo : commands.redo)(this.view);
+      this.view.focus();
+    });
+  }
+
+  focusEditor(): void {
+    this.view?.focus();
   }
 
   private async clear(): Promise<void> {

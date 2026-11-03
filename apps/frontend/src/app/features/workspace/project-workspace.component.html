@@ -158,11 +158,22 @@
           </div>
         }
       </div>
+      <app-toolbar
+        [projectId]="projectId()"
+        [mode]="toolbarMode()"
+        [headingLevel]="headingLevel()"
+        [enabled]="toolbarEnabled()"
+        [editorApi]="editorApi"
+        (symbolsOpenChange)="symbolsOpen.set($event)"
+        (fileUploaded)="onToolbarFileUploaded()"
+      />
       <app-editor
+        #editor
         [projectId]="projectId()"
         [filePath]="activePath()"
         [jumpTarget]="jumpTarget()"
         (contentChanged)="onEditorContentChanged($event)"
+        (headingLevelChanged)="onHeadingLevelChanged($event)"
       />
     </section>
 

@@ -1,5 +1,12 @@
+export type PopoverAlign = 'left' | 'right';
+
 /** Ports app.js's place(): positions a fixed popover against its trigger button, flipping above when it would overflow the viewport bottom. */
-export function placePopover(pop: HTMLElement, btn: HTMLElement, matchWidth: boolean): void {
+export function placePopover(
+  pop: HTMLElement,
+  btn: HTMLElement,
+  matchWidth: boolean,
+  align: PopoverAlign = matchWidth ? 'left' : 'right',
+): void {
   const rect = btn.getBoundingClientRect();
   if (matchWidth) {
     pop.style.width = `${rect.width}px`;
@@ -7,7 +14,7 @@ export function placePopover(pop: HTMLElement, btn: HTMLElement, matchWidth: boo
   const width = pop.offsetWidth;
   const left = Math.max(
     8,
-    Math.min(window.innerWidth - width - 8, matchWidth ? rect.left : rect.right - width),
+    Math.min(window.innerWidth - width - 8, align === 'right' ? rect.right - width : rect.left),
   );
   let top = rect.bottom + 6;
   const height = pop.offsetHeight;

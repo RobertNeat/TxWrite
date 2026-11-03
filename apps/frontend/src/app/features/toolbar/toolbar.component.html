@@ -1,0 +1,442 @@
+<div
+  id="editor-tools"
+  class="tools"
+  role="toolbar"
+  aria-label="Formatowanie tekstu"
+  (click)="stop($event)"
+>
+  <button
+    id="tb-undo"
+    class="tb"
+    type="button"
+    title="Cofnij (Ctrl+Z)"
+    aria-label="Cofnij"
+    [disabled]="!enabled()"
+    (click)="undo()"
+  >
+    <svg class="ic" aria-hidden="true"><use href="#i-undo" /></svg>
+  </button>
+  <button
+    id="tb-redo"
+    class="tb"
+    type="button"
+    title="Ponów (Ctrl+Y)"
+    aria-label="Ponów"
+    [disabled]="!enabled()"
+    (click)="redo()"
+  >
+    <svg class="ic" aria-hidden="true"><use href="#i-redo" /></svg>
+  </button>
+  <span class="tsep" role="separator"></span>
+
+  <button
+    id="tb-heading"
+    #headingBtn
+    class="tb hd"
+    type="button"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="openMenu() === 'heading'"
+    title="Styl nagłówka"
+    [disabled]="!enabled()"
+    (click)="toggleMenu('heading')"
+  >
+    <span id="tb-heading-label">{{ headingLabel() }}</span>
+    <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+  </button>
+  @if (openMenu() === 'heading') {
+    <div
+      id="heading-menu"
+      #headingPop
+      class="pop menu"
+      role="menu"
+      aria-label="Styl nagłówka"
+      (click)="stop($event)"
+    >
+      @for (h of headingOptions; track h.level) {
+        <button
+          [id]="'heading-opt-' + h.level"
+          class="mi"
+          [class]="'hd-' + h.level"
+          role="menuitemradio"
+          type="button"
+          [attr.aria-checked]="h.level === headingLevel()"
+          (click)="selectHeading(h.level)"
+        >
+          <span
+            >{{ h.label }}
+            @if (h.level === 'paragraph') {
+              <i>tekst</i>
+            }
+          </span>
+          @if (headingCommandHint(h.level); as hint) {
+            <code>{{ hint }}</code>
+          }
+        </button>
+      }
+    </div>
+  }
+  <span class="tsep" role="separator"></span>
+
+  <button
+    id="tb-bold"
+    class="tb b"
+    type="button"
+    title="Pogrubienie (Ctrl+B)"
+    aria-label="Pogrubienie"
+    [disabled]="!enabled()"
+    (click)="bold()"
+  >
+    B
+  </button>
+  <button
+    id="tb-italic"
+    class="tb i"
+    type="button"
+    title="Kursywa (Ctrl+I)"
+    aria-label="Kursywa"
+    [disabled]="!enabled()"
+    (click)="italic()"
+  >
+    I
+  </button>
+  <span class="tsep" role="separator"></span>
+
+  <button
+    id="tb-math"
+    #mathBtn
+    class="tb"
+    type="button"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="openMenu() === 'math'"
+    title="Wstaw wzór"
+    aria-label="Wstaw wzór"
+    [disabled]="!enabled()"
+    (click)="toggleMenu('math')"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-sigma" /></svg>
+    <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+  </button>
+  @if (openMenu() === 'math') {
+    <div
+      id="math-menu"
+      #mathPop
+      class="pop menu"
+      role="menu"
+      aria-label="Wstaw wzór"
+      (click)="stop($event)"
+    >
+      <button
+        id="math-opt-inline"
+        class="mi"
+        role="menuitem"
+        type="button"
+        (click)="insertMath('inline')"
+      >
+        <span class="lead"><b>Wzór w tekście</b></span
+        ><code>$…$</code>
+      </button>
+      <button
+        id="math-opt-display"
+        class="mi"
+        role="menuitem"
+        type="button"
+        (click)="insertMath('display')"
+      >
+        <span class="lead"><b>Blokowy</b></span
+        ><code>equation</code>
+      </button>
+    </div>
+  }
+  <button
+    id="tb-symbols"
+    class="tb g"
+    type="button"
+    [attr.aria-pressed]="symbolsOpen()"
+    title="Wstaw symbol"
+    aria-label="Wstaw symbol"
+    [disabled]="!enabled()"
+    (click)="toggleSymbols()"
+  >
+    Ω
+  </button>
+  <span class="tsep" role="separator"></span>
+
+  <button
+    id="tb-link"
+    class="tb"
+    type="button"
+    title="Wstaw odnośnik"
+    aria-label="Wstaw odnośnik"
+    [disabled]="!enabled()"
+    (click)="insertLink()"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-link" /></svg>
+  </button>
+  <button
+    id="tb-ref"
+    class="tb"
+    type="button"
+    title="Wstaw odwołanie do etykiety"
+    aria-label="Wstaw odwołanie do etykiety"
+    [disabled]="!enabled()"
+    (click)="insertRef()"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-hash" /></svg>
+  </button>
+  <button
+    id="tb-cite"
+    class="tb"
+    type="button"
+    title="Wstaw cytowanie"
+    aria-label="Wstaw cytowanie"
+    [disabled]="!enabled()"
+    (click)="insertCite()"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-quote" /></svg>
+  </button>
+
+  <button
+    id="tb-figure"
+    #figureBtn
+    class="tb"
+    type="button"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="openMenu() === 'figure'"
+    title="Wstaw rysunek"
+    aria-label="Wstaw rysunek"
+    [disabled]="!enabled()"
+    (click)="toggleMenu('figure')"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-image" /></svg>
+    <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+  </button>
+  @if (openMenu() === 'figure') {
+    <div
+      id="figure-menu"
+      #figurePop
+      class="pop menu figp"
+      role="menu"
+      aria-label="Wstaw rysunek"
+      (click)="stop($event)"
+    >
+      @if (figureState().view === 'menu') {
+        <button
+          id="figure-opt-upload"
+          class="mi"
+          role="menuitem"
+          type="button"
+          (click)="triggerUpload()"
+        >
+          <span class="lead"
+            ><svg class="ic" aria-hidden="true"><use href="#i-upload" /></svg
+            ><b>Prześlij z komputera</b></span
+          >
+        </button>
+        <button
+          id="figure-opt-files"
+          class="mi"
+          role="menuitem"
+          type="button"
+          (click)="openFigureFiles()"
+        >
+          <span class="lead"
+            ><svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg
+            ><b>Z plików projektu</b></span
+          >
+          <svg class="ic sm" aria-hidden="true"><use href="#i-chev-r" /></svg>
+        </button>
+      } @else {
+        <button
+          id="figure-opt-back"
+          class="mi"
+          role="menuitem"
+          type="button"
+          (click)="backToFigureMenu()"
+        >
+          <span class="lead"
+            ><svg class="ic" aria-hidden="true"><use href="#i-chev-l" /></svg
+            ><b>Z plików projektu</b></span
+          >
+        </button>
+        <div class="mi-sep" role="separator"></div>
+        @if (projectImages().length) {
+          @for (img of projectImages(); track img.path) {
+            <button
+              [id]="'figure-opt-path-' + img.path"
+              class="mi"
+              role="menuitem"
+              type="button"
+              (click)="selectFigurePath(img.path)"
+            >
+              <span class="lead"
+                ><svg class="ic" aria-hidden="true"><use href="#i-image" /></svg
+                ><span>{{ img.path }}</span></span
+              >
+            </button>
+          }
+        } @else {
+          <div class="ws-empty">Brak obrazów w projekcie.</div>
+        }
+      }
+    </div>
+  }
+  <input
+    id="figure-upload-input"
+    #uploadInput
+    type="file"
+    accept="image/*,.pdf"
+    hidden
+    (change)="onUploadFileSelected($event)"
+  />
+
+  <button
+    id="tb-table"
+    #tableBtn
+    class="tb"
+    type="button"
+    aria-haspopup="true"
+    [attr.aria-expanded]="openMenu() === 'table'"
+    title="Wstaw tabelę"
+    aria-label="Wstaw tabelę"
+    [disabled]="!enabled()"
+    (click)="toggleMenu('table')"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-table" /></svg>
+    <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+  </button>
+  @if (openMenu() === 'table') {
+    <div
+      id="table-menu"
+      #tablePop
+      class="pop menu tblp"
+      (click)="stop($event)"
+      (pointerleave)="hoverTableCell(0, 0)"
+    >
+      <div class="tbl-grid">
+        @for (cell of tableGridCells; track cell.row + '-' + cell.col) {
+          <button
+            [id]="'tbl-cell-' + cell.row + '-' + cell.col"
+            type="button"
+            class="gc"
+            [class.on]="cell.row <= tableHover().rows && cell.col <= tableHover().cols"
+            [tabindex]="cell.row === 1 && cell.col === 1 ? 0 : -1"
+            [attr.aria-label]="cell.row + ' wierszy, ' + cell.col + ' kolumn'"
+            (pointerover)="hoverTableCell(cell.row, cell.col)"
+            (focus)="hoverTableCell(cell.row, cell.col)"
+            (click)="selectTableCell(cell.row, cell.col)"
+            (keydown)="moveTableCell($event, cell.row, cell.col)"
+          ></button>
+        }
+      </div>
+      <div id="table-size-label" class="tbl-lab">
+        @if (tableHover().rows) {
+          {{ tableHover().rows }} × {{ tableHover().cols }}
+          <small>wiersze × kolumny</small>
+        } @else {
+          Wybierz rozmiar
+          <small>wiersze × kolumny</small>
+        }
+      </div>
+    </div>
+  }
+  <span class="tsep" role="separator"></span>
+
+  <button
+    id="tb-list"
+    #listBtn
+    class="tb"
+    type="button"
+    aria-haspopup="menu"
+    [attr.aria-expanded]="openMenu() === 'list'"
+    title="Wstaw listę"
+    aria-label="Wstaw listę"
+    [disabled]="!enabled()"
+    (click)="toggleMenu('list')"
+  >
+    <svg class="ic lg" aria-hidden="true"><use href="#i-list" /></svg>
+    <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+  </button>
+  @if (openMenu() === 'list') {
+    <div
+      id="list-menu"
+      #listPop
+      class="pop menu"
+      role="menu"
+      aria-label="Wstaw listę"
+      (click)="stop($event)"
+    >
+      <button id="list-opt-ul" class="mi" role="menuitem" type="button" (click)="insertList('ul')">
+        <span class="lead"><b>Lista punktowana</b></span>
+      </button>
+      <button id="list-opt-ol" class="mi" role="menuitem" type="button" (click)="insertList('ol')">
+        <span class="lead"><b>Lista numerowana</b></span>
+      </button>
+    </div>
+  }
+</div>
+
+@if (symbolsOpen()) {
+  <div id="symbols-panel" class="symp" (click)="stop($event)">
+    <div class="symp-h">
+      <h3>Symbole</h3>
+      <label class="symp-q">
+        <svg class="ic" aria-hidden="true"><use href="#i-search" /></svg>
+        <input
+          id="symbols-search"
+          type="text"
+          placeholder="Szukaj symbolu…"
+          autocomplete="off"
+          aria-label="Szukaj symbolu"
+          [ngModel]="symbolQuery()"
+          (ngModelChange)="symbolQuery.set($event)"
+        />
+      </label>
+      <div id="symbols-tabs" class="symp-t" role="tablist" aria-label="Kategorie symboli">
+        @for (cat of symbolCategoryTabs; track cat[0]) {
+          <button
+            [id]="'symbols-tab-' + cat[0]"
+            class="st"
+            type="button"
+            role="tab"
+            [attr.aria-selected]="!symbolQuery() && cat[0] === symbolCategory()"
+            (click)="selectSymbolCategory(cat[0])"
+          >
+            {{ cat[1] }}
+          </button>
+        }
+      </div>
+      <button
+        id="symbols-close"
+        class="ib"
+        type="button"
+        title="Zamknij panel symboli"
+        aria-label="Zamknij panel symboli"
+        (click)="closeSymbols()"
+      >
+        <svg class="ic" aria-hidden="true"><use href="#i-close" /></svg>
+      </button>
+    </div>
+    <div id="symbols-body" class="symp-b" (pointerleave)="hoverSymbol(null)">
+      @if (visibleSymbols().length) {
+        @for (entry of visibleSymbols(); track entry[1]) {
+          <button
+            class="sy"
+            type="button"
+            [title]="entry[1]"
+            [attr.aria-label]="entry[1]"
+            (pointerover)="hoverSymbol(entry)"
+            (focus)="hoverSymbol(entry)"
+            (click)="insertSymbol(entry)"
+          >
+            {{ entry[0] }}
+          </button>
+        }
+      } @else {
+        <div class="ws-empty">Brak symboli pasujących do „{{ symbolQuery() }}”.</div>
+      }
+    </div>
+    <div class="symp-f">
+      <span id="symbols-hint">{{ hoveredSymbolCommand() }}</span>
+    </div>
+  </div>
+}

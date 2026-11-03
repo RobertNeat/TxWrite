@@ -3,7 +3,85 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
-## Active: UI overhaul M4 — document outline panel wired to the open file
+## Done: UI overhaul M5 — formatting toolbar
+
+Ported app.js's `.tools`/`act()`/`insertTpl()`/`insertRaw()` family
+verbatim into `ToolbarComponent` (new `features/toolbar/` dir:
+`toolbar.component.*`, `toolbar.model.ts` for the pure edit functions,
+`toolbar.data.ts` for HEADS/SYMS/SYMCAT). Order and grouping (with
+`.tsep` separators) matches the mockup: undo/redo — heading style menu
+— bold/italic — math menu, Ω symbols toggle — link/ref/cite/figure/
+table — list menu.
+
+- `EditorComponent` gained a narrow public API instead of exposing
+  `EditorView`: `applyEdit(compute)` (dispatches a pure (doc, from, to)
+  → `EditResult` transform as a full-document replace), `undo()`/
+  `redo()` (via `@codemirror/commands`, works because `basicSetup`
+  already wires `history()` + `historyKeymap`), `isEditable()`,
+  `currentMode()`. A new `headingLevelChanged` output fires on both
+  `docChanged` and `selectionSet` so the toolbar's heading-style label
+  tracks the cursor live, per app.js's `updHead()`/`lineLevel()`.
+  `ProjectWorkspaceComponent` wires `ToolbarComponent`'s `editorApi`
+  input to a thin adapter object backed by a `#editor` `@ViewChild`.
+- Insertion logic in `toolbar.model.ts` is pure (doc, selection) →
+  `EditResult` functions mirroring `pad()`, `insertRaw()`,
+  `insertTpl()`, `applyHeading()`, `insertTable()`, `insertFigure()`,
+  `insertLink()`, `lineBounds()`, `lineLevel()`. Templates (`TPL`)
+  ported per-mode (tex/md) with the `‸` cursor marker exactly as
+  written — including the `.md` extensions the mockup's own author
+  flagged as scope creep (ref/cite/display-math/table syntax for
+  `.md`, since the brief only specified LaTeX commands).
+- Toolbar fully disabled (`.tb[disabled]`) for non-text files
+  (`!isTextFile`), matching the outline's binary-file handling.
+- Heading menu: 5 items (Normalny tekst/Sekcja/Podsekcja/Podpodsekcja/
+  Paragraf), each styled in its target font/size (`.hd-*`, `--serif`),
+  command hint next to each, `aria-checked` on the cursor's level.
+  Verified live: inserting "Sekcja" wraps the cursor's line in
+  `\section{...}`; undo restores exactly.
+- Math menu: "Wzór w tekście" (`$…$`) / "Blokowy" (`\begin{equation}`
+  tex, `$$…$$` md) — verified live, menu content matches the mockup.
+- Link/ref/cite: `\href{}{sel}`/`\ref{}`/`\cite{}` (tex) or
+  `[sel](url)`/`[@etykieta]` (md).
+- Table grid: 10×10 hover/keyboard-navigable grid (`.gc` cells),
+  "R × C" label, click inserts the exact template string from app.js
+  (4-space indent preserved verbatim) or the md pipe-table variant.
+  Verified live: hovered 3×4, inserted, exact template matched
+  (`\begin{table}` … `\label{tab:placeholder}` … `\end{table}`); undo
+  restored cleanly.
+- Figure menu: per explicit user decision, only the two backend-backed
+  options ship — "Prześlij z komputera" (writes into `obrazy/` via the
+  existing file-write endpoint, then inserts the figure template) and
+  "Z plików projektu" (submenu listing project images png/jpg/pdf/svg
+  via the existing file-list endpoint — verified live, correctly found
+  `images/figure.svg`). "Z innego projektu" and "Z adresu URL" are
+  dropped entirely (mockup-only dummies, no real backend) — not
+  stubbed, not disabled, per rule 8's "absent, not disabled" principle.
+- List menu: itemize/enumerate (tex) or `- `/`1. ` (md).
+- Symbols panel: toggle button (`aria-pressed`), opens below the
+  editor inside `.ed` via CSS `order` (toolbar's `:host { display:
+  contents }` flattens `.tools`/`.symp` into `.ed`'s flex children;
+  `order: -1`/`1` keeps them pinned above/below `app-editor` regardless
+  of DOM position), `flex: none; max-height: 55%`, category tabs +
+  live cross-category search, click inserts the raw command and keeps
+  the panel open and focus in the editor for inserting several symbols
+  in a row. Verified live: hovered Ω showed `\Omega` hint, click
+  inserted `\Omega ` and kept the panel open; re-verified the M4
+  editor-scroll fix (`bodyScrollHeight === windowInnerHeight`) still
+  holds with the panel open (editor host correctly shrank from 843px
+  to 622px instead of the page growing).
+- Added missing sprite icons to `index.html` (`i-undo`, `i-redo`,
+  `i-sigma`, `i-link`, `i-hash`, `i-quote`, `i-image`, `i-table`,
+  `i-list`, `i-chev-l`), copied verbatim from the mockup.
+- `placePopover()` gained an `align` parameter (`'left' | 'right'`,
+  defaulting to preserve each existing caller's prior behavior) since
+  the toolbar's menus are left-aligned to their button like app.js's
+  `wirePop(..., 'left')`, while the pre-existing `wsPop`/kebab popovers
+  were right-aligned.
+- Backend 404 fix (`main.ts`'s `preHandler` hook) and trailing-newline
+  cleanup for two files edited during manual M4 testing were folded
+  into the M4 commit, not this one.
+
+## Done: UI overhaul M4 — document outline panel wired to the open file
 
 - `OutlineComponent` (`#outline-header`/`#outline-list`) ported from app.js's
   `renderOutline()`: parses the active file's headings on every load/edit,

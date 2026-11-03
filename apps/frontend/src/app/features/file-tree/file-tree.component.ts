@@ -66,7 +66,7 @@ export class FileTreeComponent implements OnChanges {
     }
   }
 
-  private async refresh(): Promise<void> {
+  async refresh(): Promise<void> {
     this.entries.set(await this.api.listFiles(this.projectId()));
   }
 

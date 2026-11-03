@@ -19,9 +19,11 @@ import { BrandComponent } from '../../shared/brand.component.js';
 import { placePopover } from '../../shared/popover-position.js';
 import type { CompileResult, Profile, Project } from '../../core/api/api.types.js';
 import { FileTreeComponent } from '../file-tree/file-tree.component.js';
-import { tagFor } from '../file-tree/file-tree.model.js';
+import { isTextFile, tagFor } from '../file-tree/file-tree.model.js';
 import { EditorComponent, type JumpTarget } from '../editor/editor.component.js';
 import { OutlineComponent } from '../outline/outline.component.js';
+import { ToolbarComponent, type ToolbarEditorApi } from '../toolbar/toolbar.component.js';
+import type { HeadingLevel } from '../toolbar/toolbar.model.js';
 import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
 import { PdfPreviewComponent } from '../pdf-preview/pdf-preview.component.js';
 import { StatusBarComponent } from '../status-bar/status-bar.component.js';
@@ -41,6 +43,7 @@ const KEY_STEP = 32;
     FileTreeComponent,
     EditorComponent,
     OutlineComponent,
+    ToolbarComponent,
     CompilePanelComponent,
     PdfPreviewComponent,
     StatusBarComponent,
@@ -62,6 +65,8 @@ export class ProjectWorkspaceComponent implements OnInit {
   protected readonly profileWorkspaces = signal<Project[]>([]);
   protected readonly jumpTarget = signal<JumpTarget | null>(null);
   protected readonly editorContent = signal<{ path: string; content: string } | null>(null);
+  protected readonly headingLevel = signal<HeadingLevel>('normal');
+  protected readonly symbolsOpen = signal(false);
   protected readonly isMarkdownProject = signal(false);
   protected readonly pdfRefreshToken = signal(0);
 
@@ -81,6 +86,13 @@ export class ProjectWorkspaceComponent implements OnInit {
   @ViewChild('wsQuery') private wsQuery?: ElementRef<HTMLInputElement>;
   @ViewChild('mainGrid') private mainGrid?: ElementRef<HTMLElement>;
   @ViewChild('fileTree') private fileTree?: FileTreeComponent;
+  @ViewChild('editor') private editor?: EditorComponent;
+
+  protected readonly editorApi: ToolbarEditorApi = {
+    applyEdit: (compute) => this.editor?.applyEdit(compute),
+    undo: () => this.editor?.undo(),
+    redo: () => this.editor?.redo(),
+  };
 
   ngOnInit(): void {
     // Angular reuses this component instance when only the :projectId route
@@ -174,6 +186,10 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.fileTree?.startNewDir();
   }
 
+  onToolbarFileUploaded(): void {
+    void this.fileTree?.refresh();
+  }
+
   // ---------- tabs ----------
 
   openFile(path: string | null): void {
@@ -216,6 +232,19 @@ export class ProjectWorkspaceComponent implements OnInit {
   onEditorContentChanged(payload: { path: string; content: string } | null): void {
     this.editorContent.set(payload);
   }
+
+  onHeadingLevelChanged(level: HeadingLevel): void {
+    this.headingLevel.set(level);
+  }
+
+  protected readonly toolbarMode = computed<'tex' | 'md'>(() =>
+    (this.activePath() ?? '').toLowerCase().endsWith('.md') ? 'md' : 'tex',
+  );
+
+  protected readonly toolbarEnabled = computed(() => {
+    const path = this.activePath();
+    return !!path && isTextFile(path);
+  });
 
   /** Guards against the brief async window where the editor still holds the previous tab's payload. */
   protected readonly outlinePath = computed(() => {
