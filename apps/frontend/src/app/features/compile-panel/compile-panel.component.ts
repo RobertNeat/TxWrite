@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { ApiService } from '../../core/api/api.service.js';
 import { EventStreamService } from '../../core/events/event-stream.service.js';
 import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
@@ -29,16 +29,18 @@ function normalizeTexPath(file: string): string {
   return file.replace(/^\.\//, '');
 }
 
+/**
+ * The mockup's `#logp` panel body — diagnostics (with jump-to-source) and the
+ * raw event log. Visibility/positioning is the parent's job (`PdfPreviewComponent`
+ * owns the `.pv-bar` Logi toggle and the `logp` host); this component only owns
+ * compiling, since the stale-dot and "Kompiluj" button both need to react to it.
+ */
 @Component({
   selector: 'app-compile-panel',
   standalone: true,
   imports: [TranslatePipe],
   template: `
     <div id="compile-panel" class="compile-panel">
-      <button id="compile-button" type="button" [disabled]="compiling()" (click)="compile()">
-        {{ (compiling() ? 'compile.compiling' : 'compile.button') | t }}
-      </button>
-
       @if (lastResult(); as result) {
         <p
           [id]="'compile-result-status'"
@@ -104,6 +106,7 @@ function normalizeTexPath(file: string): string {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        padding: 10px 12px;
       }
       .compile-result {
         font-weight: 600;
@@ -143,13 +146,12 @@ function normalizeTexPath(file: string): string {
         margin: 0;
         font-family: monospace;
         font-size: 0.75rem;
-        max-height: 16rem;
         overflow: auto;
       }
     `,
   ],
 })
-export class CompilePanelComponent implements OnInit {
+export class CompilePanelComponent {
   private readonly api = inject(ApiService);
   private readonly eventStream = inject(EventStreamService);
 
@@ -157,12 +159,16 @@ export class CompilePanelComponent implements OnInit {
   readonly isMarkdownProject = input<boolean>(false);
   readonly jumpToFile = output<JumpTarget>();
   readonly compiled = output<CompileResult>();
+  readonly compilingChanged = output<boolean>();
 
-  protected readonly compiling = signal(false);
   protected readonly lastResult = signal<CompileResult | null>(null);
 
   protected readonly diagnostics = computed<CompileDiagnostic[]>(
     () => this.lastResult()?.diagnostics ?? [],
+  );
+
+  readonly warningCount = computed(
+    () => this.diagnostics().filter((d) => d.severity === 'warning').length,
   );
 
   protected readonly logLines = computed(() =>
@@ -172,7 +178,7 @@ export class CompilePanelComponent implements OnInit {
       .map(describeEvent),
   );
 
-  ngOnInit(): void {
+  constructor() {
     this.eventStream.connect();
   }
 
@@ -184,16 +190,13 @@ export class CompilePanelComponent implements OnInit {
   }
 
   async compile(): Promise<void> {
-    if (this.compiling()) {
-      return;
-    }
-    this.compiling.set(true);
+    this.compilingChanged.emit(true);
     try {
       const result = await this.api.compile(this.projectId());
       this.lastResult.set(result);
       this.compiled.emit(result);
     } finally {
-      this.compiling.set(false);
+      this.compilingChanged.emit(false);
     }
   }
 }

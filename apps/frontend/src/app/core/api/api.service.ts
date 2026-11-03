@@ -1,5 +1,11 @@
 import { Injectable } from '@angular/core';
-import type { CompileResult, Profile, Project, ProjectFileEntry } from './api.types.js';
+import type {
+  CompileResult,
+  Profile,
+  Project,
+  ProjectFileEntry,
+  SynctexEditResult,
+} from './api.types.js';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -111,5 +117,9 @@ export class ApiService {
 
   outputPdfUrl(projectId: string): string {
     return `/api/projects/${projectId}/output.pdf`;
+  }
+
+  synctexEdit(projectId: string, page: number, x: number, y: number): Promise<SynctexEditResult> {
+    return request(`/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}`);
   }
 }

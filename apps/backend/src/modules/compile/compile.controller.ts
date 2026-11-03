@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   NotFoundException,
   Param,
   Post,
+  Query,
   Res,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
@@ -12,10 +14,22 @@ import {
   CompileService,
   type CompileResultWithInstalls,
 } from './compile.service.js';
+import { SynctexService, type SynctexEditResult } from './synctex.service.js';
+
+function parseCoordinate(name: string, value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new BadRequestException(`Invalid ${name}`);
+  }
+  return parsed;
+}
 
 @Controller('projects/:id')
 export class CompileController {
-  constructor(private readonly compileService: CompileService) {}
+  constructor(
+    private readonly compileService: CompileService,
+    private readonly synctexService: SynctexService,
+  ) {}
 
   @Post('compile')
   async compile(@Param('id') id: string): Promise<CompileResultWithInstalls> {
@@ -35,5 +49,20 @@ export class CompileController {
       .header('Cache-Control', 'no-store')
       .type('application/pdf')
       .send(createReadStream(pdfPath));
+  }
+
+  @Get('synctex')
+  async synctexEdit(
+    @Param('id') id: string,
+    @Query('page') page: string,
+    @Query('x') x: string,
+    @Query('y') y: string,
+  ): Promise<SynctexEditResult> {
+    return this.synctexService.edit(
+      id,
+      parseCoordinate('page', page),
+      parseCoordinate('x', x),
+      parseCoordinate('y', y),
+    );
   }
 }

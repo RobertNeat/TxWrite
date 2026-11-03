@@ -75,6 +75,7 @@ ENV PATH="/opt/texlive/bin/x86_64-linux:${PATH}"
 
 RUN tlmgr install \
     latexmk \
+    synctex \
     collection-xetex \
     collection-luatex \
     biber biblatex \

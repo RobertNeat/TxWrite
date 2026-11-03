@@ -1,0 +1,216 @@
+.pdf-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.pv-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 42px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  white-space: nowrap;
+  position: relative;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--tint2);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+}
+
+.btn-p {
+  background: var(--navy);
+  color: #fff;
+}
+
+.btn-p:hover:not(:disabled) {
+  background: var(--navy);
+  opacity: 0.9;
+}
+
+.btn.tgl[aria-pressed='true'] {
+  background: var(--tint2);
+}
+
+.sdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e07a1f;
+  margin-left: 2px;
+}
+
+.ic.spin {
+  animation: pv-spin 1s linear infinite;
+}
+
+@keyframes pv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pgn {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.pg-in {
+  width: 56px;
+  height: 28px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.tsep {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 6px;
+}
+
+.ib {
+  width: 28px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--navy);
+}
+
+.ib:hover:not(:disabled) {
+  background: var(--tint2);
+}
+
+.ib:disabled {
+  opacity: 0.4;
+}
+
+.zl {
+  flex: none;
+  min-width: 42px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 24px;
+}
+
+.pdf-page {
+  box-shadow: 0 1px 4px rgba(19, 33, 63, 0.18);
+  cursor: text;
+}
+
+.pdf-preview-error {
+  color: #c33;
+  padding: 16px;
+  text-align: center;
+}
+
+#pdf-preview-empty {
+  color: var(--muted);
+  padding: 16px;
+  text-align: center;
+}
+
+.logp {
+  flex: none;
+  max-height: 40%;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.logp-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 8px 0 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.logp-h h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.logp-h .cnt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.logp-h .spacer {
+  flex: 1;
+}
+
+.logp-b {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

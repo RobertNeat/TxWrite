@@ -215,6 +215,7 @@ export class CompileRunnerService {
         [
           '-norc',
           engineFlag,
+          '-synctex=1',
           '-shell-restricted',
           `-outdir=${workDir}`,
           `-auxdir=${workDir}`,

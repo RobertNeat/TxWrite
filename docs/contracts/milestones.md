@@ -5,7 +5,6 @@ this list right before the commit that finishes it. See
 `docs/currentwork/plan.md` for the active milestone's detail and
 `CLAUDE.md` rule 8.
 
-- UI overhaul M6: PDF preview toolbar (page nav, zoom/fit, log panel toggle, SyncTeX-style double-click-to-source)
 - UI overhaul M7: status bar and remaining visual polish pass
 - Backend: empty directory creation endpoint (mockup item `#bDir`)
 - Backend: profile delete endpoint (mockup's profile "x"/environment delete)

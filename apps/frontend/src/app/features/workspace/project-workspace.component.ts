@@ -17,14 +17,13 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api/api.service.js';
 import { BrandComponent } from '../../shared/brand.component.js';
 import { placePopover } from '../../shared/popover-position.js';
-import type { CompileResult, Profile, Project } from '../../core/api/api.types.js';
+import type { Profile, Project } from '../../core/api/api.types.js';
 import { FileTreeComponent } from '../file-tree/file-tree.component.js';
-import { isTextFile, tagFor } from '../file-tree/file-tree.model.js';
+import { extensionOf, isTextFile, tagFor } from '../file-tree/file-tree.model.js';
 import { EditorComponent, type JumpTarget } from '../editor/editor.component.js';
 import { OutlineComponent } from '../outline/outline.component.js';
 import { ToolbarComponent, type ToolbarEditorApi } from '../toolbar/toolbar.component.js';
 import type { HeadingLevel } from '../toolbar/toolbar.model.js';
-import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
 import { PdfPreviewComponent } from '../pdf-preview/pdf-preview.component.js';
 import { StatusBarComponent } from '../status-bar/status-bar.component.js';
 
@@ -44,7 +43,6 @@ const KEY_STEP = 32;
     EditorComponent,
     OutlineComponent,
     ToolbarComponent,
-    CompilePanelComponent,
     PdfPreviewComponent,
     StatusBarComponent,
   ],
@@ -68,7 +66,6 @@ export class ProjectWorkspaceComponent implements OnInit {
   protected readonly headingLevel = signal<HeadingLevel>('normal');
   protected readonly symbolsOpen = signal(false);
   protected readonly isMarkdownProject = signal(false);
-  protected readonly pdfRefreshToken = signal(0);
 
   protected readonly workspacePopoverOpen = signal(false);
   protected workspaceQuery = '';
@@ -87,6 +84,7 @@ export class ProjectWorkspaceComponent implements OnInit {
   @ViewChild('mainGrid') private mainGrid?: ElementRef<HTMLElement>;
   @ViewChild('fileTree') private fileTree?: FileTreeComponent;
   @ViewChild('editor') private editor?: EditorComponent;
+  @ViewChild('pdfPreview') private pdfPreview?: PdfPreviewComponent;
 
   protected readonly editorApi: ToolbarEditorApi = {
     applyEdit: (compute) => this.editor?.applyEdit(compute),
@@ -233,6 +231,14 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.editorContent.set(payload);
   }
 
+  private static readonly STALE_EXTENSIONS = new Set(['tex', 'sty', 'cls', 'bib']);
+
+  onDocEdited(path: string): void {
+    if (ProjectWorkspaceComponent.STALE_EXTENSIONS.has(extensionOf(path))) {
+      this.pdfPreview?.markStale();
+    }
+  }
+
   onHeadingLevelChanged(level: HeadingLevel): void {
     this.headingLevel.set(level);
   }
@@ -259,12 +265,6 @@ export class ProjectWorkspaceComponent implements OnInit {
 
   jumpToOutlineTarget(target: JumpTarget): void {
     this.jumpTarget.set(target);
-  }
-
-  onCompiled(result: CompileResult): void {
-    if (result.pdfPath) {
-      this.pdfRefreshToken.update((n) => n + 1);
-    }
   }
 
   // ---------- resizable panels ----------

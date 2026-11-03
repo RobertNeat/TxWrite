@@ -79,6 +79,8 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   readonly jumpTarget = input<JumpTarget | null>(null);
   readonly contentChanged = output<{ path: string; content: string } | null>();
   readonly headingLevelChanged = output<HeadingLevel>();
+  /** Fires only on a real edit (docChanged), unlike contentChanged which also fires on file load. */
+  readonly docEdited = output<string>();
 
   @ViewChild('host', { static: true }) private host!: ElementRef<HTMLElement>;
 
@@ -170,6 +172,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
             if (update.docChanged) {
               this.scheduleSave(path);
               this.contentChanged.emit({ path, content: update.state.doc.toString() });
+              this.docEdited.emit(path);
             }
             if (update.docChanged || update.selectionSet) {
               this.emitHeadingLevel(path);

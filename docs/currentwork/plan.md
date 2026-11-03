@@ -3,6 +3,78 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
+## Done: UI overhaul M6 — PDF preview toolbar
+
+Ported app.js's `.pv-bar`/pager/zoom/log-panel-toggle, plus a real
+SyncTeX double-click-to-source endpoint. User confirmed installing the
+`synctex` tlmgr package since it was missing from the Docker image
+(`tlmgr install synctex` in the toolchain stage, `-synctex=1` added to
+the latexmk invocation).
+
+- Backend: new `SynctexService` + `GET /projects/:id/synctex?page&x&y`
+  — runs `synctex edit -o page:x:y:<pdf>` via `execFile` (no shell
+  interpolation), parses the `Input:`/`Line:` fields from its stdout,
+  resolves the path against the project dir and rejects anything
+  outside it (`relative(...).startsWith('..')` check) before returning
+  `{path, line}`. Markdown projects map to the generated intermediate
+  `.tex` in the cache work dir, not the `.md` source, so the frontend
+  gates double-click on `isMarkdownProject` client-side (same flag the
+  existing diagnostic-jump already uses) rather than trying to make
+  this endpoint md-aware.
+- Frontend: `PdfPreviewComponent` absorbed the `.pv-bar` toolbar
+  (compile button with spin/stale-dot states, Ctrl+Enter shortcut, Logi
+  toggle, pager with click/keyboard/scroll-tracked page, zoom
+  in/out/fit clamped 0.4–2.5) and multi-page canvas rendering
+  (`devicePixelRatio`-scaled, cancel-on-rerender via a render token).
+  `CompilePanelComponent` was narrowed to just the `logp` body
+  (diagnostics + event log, unchanged logic) and now lives nested
+  inside the log panel instead of being its own pane; it gained a
+  `compilingChanged` output and lost its own "Kompiluj" button, which
+  moved to `PdfPreviewComponent`'s bar per the mockup's control
+  ordering. `EditorComponent` gained a `docEdited` output (fires only
+  on a real `docChanged`, unlike `contentChanged` which also fires on
+  file load) so `ProjectWorkspaceComponent` can mark the preview stale
+  only on tex/sty/cls/bib edits, matching app.js's `markStale()`.
+  Export split-button is out of scope (no backend for non-PDF formats
+  yet — stays in `milestones.md`).
+- Fixed during self-test: the fit-to-width `ResizeObserver` caused a
+  continuous "ResizeObserver loop completed with undelivered
+  notifications" console error (recurring every ~1s, not just once) —
+  `fitWidth()` always re-rendered every page's canvas even when the
+  computed zoom was unchanged, and that re-render could itself change
+  the scroll container's scrollbar/content size, re-triggering the
+  observer. Fixed by skipping the re-render when the new clamped zoom
+  equals the current one, and by deferring the observer's callback to
+  `requestAnimationFrame` (the standard fix for this warning). Verified
+  clean: no ResizeObserver errors on load or during a manual `rz2` drag
+  after the fix, versus a continuous once-per-second error before it.
+- Self-tested live (fresh 3-page `.tex` project + a `.md` project,
+  since the repo's pre-existing "Test Paper" fixture project has
+  broken `\input`s unrelated to this milestone): pager prev/next/scroll
+  tracking, zoom +/-/fit (clamped, page preserved across re-render),
+  log panel toggle + close, diagnostic jump-to-source, stale dot on tex
+  edit, Ctrl+Enter compile shortcut, double-click-to-source correctly
+  jumping to the clicked line on the `.tex` project and correctly
+  inert (no jump) on the `.md` project. Test projects deleted after
+  verification.
+- Fixed after user review:
+  - `app-pdf-preview` wasn't filling the aside's full width — the
+    parent's `::ng-deep app-pdf-preview` rule in
+    `project-workspace.component.css` was missing `min-width: 0` (and
+    `flex-direction: column`), the same flex-sizing gotcha hit earlier
+    with `app-editor`: without it the flex child's default
+    `min-width: auto` let intrinsic content width win instead of
+    matching the pane. Verified live: `app-pdf-preview`'s own width now
+    matches `.pv`'s to within a 1px border.
+  - Compiling no longer force-opens the log panel on a successful
+    compile — `PdfPreviewComponent.compile()` used to call
+    `logOpen.set(true)` unconditionally before compiling; it now only
+    opens the panel in `onCompiled()` when `result.success` is false,
+    leaving a successful compile's panel state untouched (open stays
+    open, closed stays closed). Matches the mockup's own spec, which
+    never mentions auto-opening on compile at all — `Logi` is purely a
+    manual toggle there.
+
 ## Done: line-number gutter markers (not from either mockup — user request)
 
 Click a line number in the gutter to toggle a temporary "I want to edit

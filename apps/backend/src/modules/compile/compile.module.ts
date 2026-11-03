@@ -8,6 +8,7 @@ import { CompileQueueService } from './compile-queue.service.js';
 import { CompileRunnerService } from './compile-runner.service.js';
 import { SvgConverterService } from './svg-converter.service.js';
 import { PandocConverterService } from './pandoc-converter.service.js';
+import { SynctexService } from './synctex.service.js';
 
 @Module({
   imports: [ProjectsModule, EventsModule, ResourceResolverModule],
@@ -18,6 +19,7 @@ import { PandocConverterService } from './pandoc-converter.service.js';
     CompileRunnerService,
     SvgConverterService,
     PandocConverterService,
+    SynctexService,
   ],
 })
 export class CompileModule {}

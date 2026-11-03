@@ -52,6 +52,11 @@ export interface CompileResult {
   installs: InstallOutcome[];
 }
 
+export interface SynctexEditResult {
+  path: string;
+  line: number;
+}
+
 // Mirrors apps/backend/src/modules/events/event-bus.service.ts AppEventType.
 export type AppEventType =
   | 'compile.started'
