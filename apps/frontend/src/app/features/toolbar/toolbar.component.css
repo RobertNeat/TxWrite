@@ -241,8 +241,11 @@
 .symp {
   order: 1;
   flex: none;
-  height: auto;
-  max-height: 55%;
+  /* Fixed (not auto) height so the panel doesn't resize per tab: header (42px)
+     + 3 symbol rows (grid-auto-rows 40px, 4px gaps, 10px top/bottom padding
+     in .symp-b = 148px) + footer (30px). Taller categories scroll within
+     .symp-b instead of growing the panel. */
+  height: min(220px, 55%);
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);
