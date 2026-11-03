@@ -52,9 +52,13 @@ export class SynctexService {
     page: number,
     x: number,
     y: number,
+    targetFile?: string,
   ): Promise<SynctexEditResult> {
     const project = this.projectsService.findByIdOrThrow(projectId);
-    const pdfPath = this.outputPdfPath(projectId, project.mainFile);
+    const pdfPath = this.compileRunner.outputPdfPath(
+      projectId,
+      targetFile ?? project.mainFile,
+    );
     if (!existsSync(pdfPath)) {
       throw new NotFoundException('No compiled PDF for this project yet');
     }
@@ -75,14 +79,6 @@ export class SynctexService {
     }
 
     return { path: relativePath.split('\\').join('/'), line: parsed.line };
-  }
-
-  private outputPdfPath(projectId: string, mainFile: string): string {
-    const baseName = mainFile
-      .split('/')
-      .pop()!
-      .replace(/\.(tex|md)$/i, '');
-    return join(this.compileRunner.workDir(projectId), `${baseName}.pdf`);
   }
 
   private runSynctexEdit(

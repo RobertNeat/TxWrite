@@ -65,7 +65,6 @@ export class ProjectWorkspaceComponent implements OnInit {
   protected readonly editorContent = signal<{ path: string; content: string } | null>(null);
   protected readonly headingLevel = signal<HeadingLevel>('normal');
   protected readonly symbolsOpen = signal(false);
-  protected readonly isMarkdownProject = signal(false);
 
   protected readonly workspacePopoverOpen = signal(false);
   protected workspaceQuery = '';
@@ -107,11 +106,11 @@ export class ProjectWorkspaceComponent implements OnInit {
     if (!id) {
       return;
     }
-    const project = await this.api.getProject(id);
+    const [project, files] = await Promise.all([this.api.getProject(id), this.api.listFiles(id)]);
     this.project.set(project);
-    this.isMarkdownProject.set(project.mainFile?.toLowerCase().endsWith('.md') ?? false);
-    this.openPaths.set(project.mainFile ? [project.mainFile] : []);
-    this.activePath.set(project.mainFile || null);
+    const initialFile = this.resolveInitialFile(project.mainFile, files);
+    this.openPaths.set(initialFile ? [initialFile] : []);
+    this.activePath.set(initialFile);
     const [profiles, allProjects] = await Promise.all([
       this.api.listProfiles(),
       this.api.listProjects(),
@@ -120,6 +119,31 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.profileWorkspaces.set(
       allProjects.filter((p) => p.ownerProfileId === project.ownerProfileId),
     );
+  }
+
+  /**
+   * The project's mainFile is just stored metadata — nothing enforces that the
+   * file actually exists (e.g. a shared working directory where it was never
+   * created, or was deleted). Opening a dangling path left the editor blank
+   * with no indication why. User request: prefer mainFile if it exists at the
+   * working directory root, else fall back to another root-level .tex file,
+   * else a root-level .md file, else nothing.
+   */
+  private resolveInitialFile(
+    mainFile: string,
+    files: { path: string; isDirectory: boolean }[],
+  ): string | null {
+    const rootFiles = files.filter((f) => !f.isDirectory && !f.path.includes('/'));
+    const rootPaths = new Set(rootFiles.map((f) => f.path));
+    if (mainFile && rootPaths.has(mainFile)) {
+      return mainFile;
+    }
+    const firstTex = rootFiles.find((f) => f.path.toLowerCase().endsWith('.tex'));
+    if (firstTex) {
+      return firstTex.path;
+    }
+    const firstMd = rootFiles.find((f) => f.path.toLowerCase().endsWith('.md'));
+    return firstMd?.path ?? null;
   }
 
   filteredWorkspaces(): Project[] {
@@ -251,6 +275,28 @@ export class ProjectWorkspaceComponent implements OnInit {
     const path = this.activePath();
     return !!path && isTextFile(path);
   });
+
+  /**
+   * Compiling/previewing/synctex target the open file when it's .tex/.md,
+   * otherwise fall back to the project's configured main file (user request:
+   * compile shouldn't require the open file to be named main.tex). `undefined`
+   * (not the project's mainFile value) when the target IS the project's main
+   * file, since the backend already defaults to it — avoids sending a
+   * redundant ?file= that would differ only in case/path normalization.
+   */
+  protected readonly compileTarget = computed<string | undefined>(() => {
+    const path = this.activePath();
+    const isCompilable = !!path && /\.(tex|md)$/i.test(path);
+    const target = isCompilable ? path : this.project()?.mainFile;
+    return target === this.project()?.mainFile ? undefined : (target ?? undefined);
+  });
+
+  protected readonly isMarkdownProject = computed(() =>
+    (this.compileTarget() ?? this.project()?.mainFile ?? '').toLowerCase().endsWith('.md'),
+  );
+
+  protected readonly flushEditorSave = (): Promise<void> =>
+    this.editor?.flushSave() ?? Promise.resolve();
 
   /** Guards against the brief async window where the editor still holds the previous tab's payload. */
   protected readonly outlinePath = computed(() => {

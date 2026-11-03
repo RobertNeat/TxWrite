@@ -42,6 +42,12 @@ export class CompileRunnerService {
     return join(this.cacheDir, 'work', projectId);
   }
 
+  /** Where runOnce() writes the compiled PDF for a given compile target. */
+  outputPdfPath(projectId: string, targetFile: string): string {
+    const baseName = basename(targetFile).replace(/\.(tex|md)$/i, '');
+    return join(this.workDir(projectId), `${baseName}.pdf`);
+  }
+
   /**
    * Runs a single latexmk pass. CWD must be the project directory so relative
    * \input{...} paths resolve; -outdir/-auxdir keep build artifacts in the

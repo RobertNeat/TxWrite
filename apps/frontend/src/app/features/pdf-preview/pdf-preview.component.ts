@@ -2,7 +2,6 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
-  HostListener,
   OnChanges,
   OnDestroy,
   SimpleChanges,
@@ -183,12 +182,10 @@ interface RenderedPage {
           </div>
           <div class="logp-b">
             <app-compile-panel
-              #compilePanel
               [projectId]="projectId()"
               [isMarkdownProject]="isMarkdownProject()"
+              [result]="lastResult()"
               (jumpToFile)="jumpToFile.emit($event)"
-              (compiled)="onCompiled($event)"
-              (compilingChanged)="compiling.set($event)"
             />
           </div>
         </div>
@@ -202,12 +199,15 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
 
   readonly projectId = input.required<string>();
   readonly isMarkdownProject = input<boolean>(false);
+  /** The file compile/preview/synctex should target — defaults to the project's mainFile when absent. */
+  readonly compileTarget = input<string | undefined>(undefined);
+  /** Flushes a pending debounced editor save before compiling, since compile reads from disk. */
+  readonly flushEditorSave = input<(() => Promise<void>) | null>(null);
   readonly jumpToFile = output<JumpTarget>();
 
   @ViewChild('scroll', { static: true }) private scrollRef!: ElementRef<HTMLDivElement>;
   @ViewChild('pages', { static: true }) private pagesRef!: ElementRef<HTMLDivElement>;
   @ViewChild('pageInput') private pageInputRef?: ElementRef<HTMLInputElement>;
-  @ViewChild('compilePanel') private compilePanel?: CompilePanelComponent;
 
   protected readonly ZOOM_STEP = ZOOM_STEP;
   protected readonly hasDocument = signal(false);
@@ -219,6 +219,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   protected readonly pageCount = signal(0);
   protected readonly zoom = signal(1.1);
   protected readonly editingPageInput = signal(false);
+  protected readonly lastResult = signal<CompileResult | null>(null);
 
   private fit = true;
   private doc: PdfDocumentProxy | null = null;
@@ -229,6 +230,19 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   private pages: RenderedPage[] = [];
   private resizeObserver: ResizeObserver | null = null;
   private suppressScrollTracking = false;
+  private compileInFlight = false;
+  private captureShortcut = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) {
+      return;
+    }
+    // Capture phase + stopPropagation: basicSetup's default CodeMirror keymap
+    // binds Mod-Enter to insertBlankLine, which would otherwise still fire
+    // (inserting a blank line and marking the doc stale) since CodeMirror's
+    // own keydown listener runs before a bubble-phase document listener does.
+    event.preventDefault();
+    event.stopPropagation();
+    void this.compile();
+  };
 
   protected readonly pageInputValue = () =>
     this.editingPageInput()
@@ -238,19 +252,13 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   protected readonly zoomLabel = () => `${Math.round(this.zoom() * 100)}%`;
 
   protected readonly warningLabel = () => {
-    const count = this.compilePanel?.warningCount() ?? 0;
+    const count =
+      this.lastResult()?.diagnostics.filter((d) => d.severity === 'warning').length ?? 0;
     return count === 1 ? '1 ostrzeżenie' : `${count} ostrzeżenia`;
   };
 
-  @HostListener('document:keydown', ['$event'])
-  handleShortcut(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      void this.compile();
-    }
-  }
-
   ngAfterViewInit(): void {
+    document.addEventListener('keydown', this.captureShortcut, true);
     this.resizeObserver = new ResizeObserver(() => {
       // Deferred to the next frame: calling fitWidth() synchronously inside
       // the observer callback (which can itself resize the observed element,
@@ -267,7 +275,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   async ngOnChanges(changes: SimpleChanges): Promise<void> {
-    if (changes['projectId']) {
+    if (changes['projectId'] || changes['compileTarget']) {
       await this.loadPdf();
     }
   }
@@ -350,22 +358,31 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   async compile(): Promise<void> {
-    await this.compilePanel?.compile();
+    if (this.compileInFlight) {
+      return;
+    }
+    this.compileInFlight = true;
+    this.compiling.set(true);
+    try {
+      await this.flushEditorSave()?.();
+      const result = await this.api.compile(this.projectId(), this.compileTarget());
+      this.lastResult.set(result);
+      this.stale.set(false);
+      if (!result.success) {
+        this.logOpen.set(true);
+      }
+      if (result.pdfPath) {
+        await this.loadPdf();
+      }
+    } finally {
+      this.compiling.set(false);
+      this.compileInFlight = false;
+    }
   }
 
   markStale(): void {
     if (!this.compiling()) {
       this.stale.set(true);
-    }
-  }
-
-  onCompiled(result: CompileResult): void {
-    this.stale.set(false);
-    if (!result.success) {
-      this.logOpen.set(true);
-    }
-    if (result.pdfPath) {
-      void this.loadPdf();
     }
   }
 
@@ -379,7 +396,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     const keepZoom = this.fit ? null : this.zoom();
     try {
       const pdfjs = await configureWorker();
-      const url = `${this.api.outputPdfUrl(projectId)}?t=${Date.now()}`;
+      const url = this.api.outputPdfUrl(projectId, this.compileTarget(), Date.now());
       const loadingTask = pdfjs.getDocument({ url });
       const doc = await loadingTask.promise;
       if (token !== this.loadToken) {
@@ -483,7 +500,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     const xPt = (event.clientX - rect.left) / zoom;
     const yPt = (viewportHeightPx - (event.clientY - rect.top)) / zoom;
     void this.api
-      .synctexEdit(this.projectId(), pageNumber, xPt, yPt)
+      .synctexEdit(this.projectId(), pageNumber, xPt, yPt, this.compileTarget())
       .then((result) => this.jumpToFile.emit({ path: result.path, line: result.line }))
       .catch(() => {
         // No mapped source location for this click (e.g. generated/whitespace area) — ignore.
@@ -491,6 +508,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   ngOnDestroy(): void {
+    document.removeEventListener('keydown', this.captureShortcut, true);
     this.resizeObserver?.disconnect();
     this.activeRenders.forEach((task) => task.cancel());
     void this.loadingTask?.destroy();

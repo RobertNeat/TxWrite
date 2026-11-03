@@ -111,15 +111,31 @@ export class ApiService {
   }
 
   // Compile
-  compile(projectId: string): Promise<CompileResult> {
-    return request(`/api/projects/${projectId}/compile`, { method: 'POST' });
+  compile(projectId: string, targetFile?: string): Promise<CompileResult> {
+    const query = targetFile ? `?file=${encodeURIComponent(targetFile)}` : '';
+    return request(`/api/projects/${projectId}/compile${query}`, { method: 'POST' });
   }
 
-  outputPdfUrl(projectId: string): string {
-    return `/api/projects/${projectId}/output.pdf`;
+  outputPdfUrl(projectId: string, targetFile?: string, cacheBust?: number): string {
+    const params = new URLSearchParams();
+    if (targetFile) {
+      params.set('file', targetFile);
+    }
+    if (cacheBust !== undefined) {
+      params.set('t', String(cacheBust));
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : '';
+    return `/api/projects/${projectId}/output.pdf${query}`;
   }
 
-  synctexEdit(projectId: string, page: number, x: number, y: number): Promise<SynctexEditResult> {
-    return request(`/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}`);
+  synctexEdit(
+    projectId: string,
+    page: number,
+    x: number,
+    y: number,
+    targetFile?: string,
+  ): Promise<SynctexEditResult> {
+    const fileParam = targetFile ? `&file=${encodeURIComponent(targetFile)}` : '';
+    return request(`/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}${fileParam}`);
   }
 }

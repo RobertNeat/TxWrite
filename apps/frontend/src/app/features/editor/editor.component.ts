@@ -266,6 +266,16 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.view?.focus();
   }
 
+  /** Flushes a pending debounced save immediately — needed before compiling, which reads from disk. */
+  async flushSave(): Promise<void> {
+    if (!this.saveTimeout) {
+      return;
+    }
+    clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    await this.save();
+  }
+
   private async clear(): Promise<void> {
     if (!this.view || this.loadedPath === null) {
       return;

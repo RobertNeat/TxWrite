@@ -1,5 +1,4 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { ApiService } from '../../core/api/api.service.js';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { EventStreamService } from '../../core/events/event-stream.service.js';
 import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
 import type { AppEvent, CompileDiagnostic, CompileResult } from '../../core/api/api.types.js';
@@ -31,9 +30,12 @@ function normalizeTexPath(file: string): string {
 
 /**
  * The mockup's `#logp` panel body — diagnostics (with jump-to-source) and the
- * raw event log. Visibility/positioning is the parent's job (`PdfPreviewComponent`
- * owns the `.pv-bar` Logi toggle and the `logp` host); this component only owns
- * compiling, since the stale-dot and "Kompiluj" button both need to react to it.
+ * raw event log. Purely presentational: compile state (triggering a compile,
+ * `compiling`/`lastResult`) lives in `PdfPreviewComponent` instead, since that
+ * component (unlike this one, which only exists while the log panel is open)
+ * stays alive across the whole compile — see plan.md's M6 fix notes for why
+ * the compile button silently did nothing while the panel was closed when
+ * this component used to own that state itself.
  */
 @Component({
   selector: 'app-compile-panel',
@@ -41,7 +43,7 @@ function normalizeTexPath(file: string): string {
   imports: [TranslatePipe],
   template: `
     <div id="compile-panel" class="compile-panel">
-      @if (lastResult(); as result) {
+      @if (result(); as result) {
         <p
           [id]="'compile-result-status'"
           class="compile-result"
@@ -152,19 +154,15 @@ function normalizeTexPath(file: string): string {
   ],
 })
 export class CompilePanelComponent {
-  private readonly api = inject(ApiService);
   private readonly eventStream = inject(EventStreamService);
 
   readonly projectId = input.required<string>();
   readonly isMarkdownProject = input<boolean>(false);
+  readonly result = input<CompileResult | null>(null);
   readonly jumpToFile = output<JumpTarget>();
-  readonly compiled = output<CompileResult>();
-  readonly compilingChanged = output<boolean>();
-
-  protected readonly lastResult = signal<CompileResult | null>(null);
 
   protected readonly diagnostics = computed<CompileDiagnostic[]>(
-    () => this.lastResult()?.diagnostics ?? [],
+    () => this.result()?.diagnostics ?? [],
   );
 
   readonly warningCount = computed(
@@ -187,16 +185,5 @@ export class CompilePanelComponent {
       return;
     }
     this.jumpToFile.emit({ path: normalizeTexPath(diagnostic.file), line: diagnostic.line });
-  }
-
-  async compile(): Promise<void> {
-    this.compilingChanged.emit(true);
-    try {
-      const result = await this.api.compile(this.projectId());
-      this.lastResult.set(result);
-      this.compiled.emit(result);
-    } finally {
-      this.compilingChanged.emit(false);
-    }
   }
 }

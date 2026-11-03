@@ -1,4 +1,7 @@
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { CompileService } from './compile.service.js';
 import { CompileQueueService } from './compile-queue.service.js';
 import { EventBusService } from '../events/event-bus.service.js';
@@ -203,5 +206,92 @@ describe('CompileService.compile (retry loop)', () => {
 
     await expect(service.compile('proj-1')).rejects.toThrow('spawn failed');
     expect(events).toEqual(['compile.started', 'compile.finished']);
+  });
+});
+
+describe('CompileService.compile (target file override)', () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compile-target-spec-'));
+    fs.mkdirSync(path.join(projectDir, 'chapters'), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'chapters', 'intro.tex'), '');
+  });
+
+  afterEach(() => {
+    fs.rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('compiles the given target file instead of the project main file when it exists', async () => {
+    const runOnce = vi.fn().mockResolvedValue(makeResult({ success: true }));
+    const compileRunner = {
+      runOnce,
+      workDir: () => '/cache/work/proj-1',
+      projectDir: () => projectDir,
+      outputPdfPath: (_id: string, target: string) =>
+        `/cache/work/proj-1/${target}.pdf`,
+    } as unknown as CompileRunnerService;
+    const resourceResolver = {} as unknown as ResourceResolverService;
+
+    const service = new CompileService(
+      makeProjectsService(),
+      new CompileQueueService(),
+      compileRunner,
+      resourceResolver,
+      new EventBusService(),
+      makeConfig(),
+    );
+
+    await service.compile('proj-1', 'chapters/intro.tex');
+
+    expect(runOnce).toHaveBeenCalledWith(
+      'proj-1',
+      'chapters/intro.tex',
+      'pdflatex',
+    );
+  });
+
+  it('rejects a target file that does not exist in the project', async () => {
+    const compileRunner = {
+      runOnce: vi.fn(),
+      workDir: () => '/cache/work/proj-1',
+      projectDir: () => projectDir,
+    } as unknown as CompileRunnerService;
+    const resourceResolver = {} as unknown as ResourceResolverService;
+
+    const service = new CompileService(
+      makeProjectsService(),
+      new CompileQueueService(),
+      compileRunner,
+      resourceResolver,
+      new EventBusService(),
+      makeConfig(),
+    );
+
+    await expect(service.compile('proj-1', 'missing.tex')).rejects.toThrow(
+      'Target file not found',
+    );
+  });
+
+  it('rejects a target file that fails main-file validation', async () => {
+    const compileRunner = {
+      runOnce: vi.fn(),
+      workDir: () => '/cache/work/proj-1',
+      projectDir: () => projectDir,
+    } as unknown as CompileRunnerService;
+    const resourceResolver = {} as unknown as ResourceResolverService;
+
+    const service = new CompileService(
+      makeProjectsService(),
+      new CompileQueueService(),
+      compileRunner,
+      resourceResolver,
+      new EventBusService(),
+      makeConfig(),
+    );
+
+    await expect(service.compile('proj-1', '../outside.tex')).rejects.toThrow(
+      'Invalid target file',
+    );
   });
 });

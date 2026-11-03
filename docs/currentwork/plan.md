@@ -3,6 +3,88 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
+## Done: M6 follow-up fixes — compile target file + regressions from the M6 commit
+
+User-requested fix: compiling no longer requires the open file to be
+named `main.tex` — it now compiles whichever file is open in the editor
+when it's `.tex`/`.md`, falling back to the project's configured
+`mainFile` otherwise (e.g. a binary file or no file open).
+
+- Backend: `CompileService.compile`/`outputPdfPath` and
+  `SynctexService.edit` all take an optional `targetFile`/`?file=`
+  param, validated with the existing `isValidMainFile` plus an
+  existence check against the project directory (`BadRequestException`
+  on either failure). `CompileRunnerService` gained a shared
+  `outputPdfPath(projectId, targetFile)` helper, deduplicating what
+  used to be two near-identical copies in `compile.service.ts` and
+  `synctex.service.ts`. New specs in `compile.service.spec.ts` cover
+  the override, a missing target file, and an invalid one (path
+  traversal) — using a real `mkdtempSync` temp dir rather than mocking
+  `node:fs`, since `vi.spyOn` can't redefine an ESM named export.
+- Frontend: `ProjectWorkspaceComponent` computes `compileTarget()` (the
+  active tab's path if `.tex`/`.md`, else `undefined` so the backend's
+  own `mainFile` default applies) and `isMarkdownProject()` from that
+  target instead of the project's `mainFile`, so compiling a `.md` file
+  inside a `.tex` project correctly enables the generated-file note and
+  disables diagnostic-jump/double-click-to-source for that compile
+  (and vice versa). Both are passed into `PdfPreviewComponent`, which
+  threads `compileTarget()` through `api.compile`/`outputPdfUrl`/`synctexEdit`.
+- Found and fixed two regressions in the M6 commit (5e23275) while
+  doing this, since they're in the same compile call path:
+  - **Kompiluj silently did nothing when the log panel was closed.**
+    `app-compile-panel` (which used to own `compile()`/`compiling`/
+    `lastResult`) only existed inside the log panel's `@if (logOpen())`
+    block, so once "open the log panel only on failure" shipped,
+    clicking Kompiluj with the panel closed called
+    `this.compilePanel?.compile()` against an undefined ViewChild — a
+    silent no-op. Fixed by moving `api.compile()` and the
+    `compiling`/`lastResult` state into `PdfPreviewComponent` itself
+    (always alive), and making `CompilePanelComponent` purely
+    presentational (`[result]` input, no more `compile()`/`compiled`/
+    `compilingChanged`). Also fixes two related bugs this structure
+    caused: closing the panel used to destroy `lastResult` (reopening
+    showed "Brak diagnostyki" even after a real compile), and closing
+    it mid-compile destroyed the component before `compiled`/
+    `compilingChanged` could fire, leaving the spinner stuck forever.
+  - **Ctrl+Enter inserted a blank line in the editor instead of (or in
+    addition to) compiling.** `basicSetup`'s default CodeMirror keymap
+    binds Mod-Enter to `insertBlankLine`; a bubble-phase
+    `document:keydown` listener fires after CodeMirror's own keydown
+    handling, too late to prevent it. Fixed by listening in the capture
+    phase (`document.addEventListener('keydown', fn, true)`) with both
+    `preventDefault()` and `stopPropagation()`, added/removed in
+    `ngAfterViewInit`/`ngOnDestroy` (replacing the `@HostListener`,
+    which is always bubble-phase).
+  - Compile now also flushes a pending debounced editor save first
+    (`EditorComponent.flushSave()`, new public method) — compile reads
+    the file from disk, and the editor's autosave debounce is 800ms, so
+    compiling immediately after typing could previously compile stale
+    content.
+  - Found live while verifying the `?file=` override:
+    `PdfPreviewComponent.loadPdf()` built its cache-busting URL as
+    `` `${api.outputPdfUrl(id, target)}?t=${Date.now()}` ``, which
+    produced a malformed `output.pdf?file=other.tex?t=169...` (two
+    `?`s) whenever a non-default target was compiled — the backend 400s
+    on that, so the PDF silently failed to load even though the compile
+    itself succeeded. `outputPdfUrl` now takes the cache-bust value as
+    a third param and builds the whole query with `URLSearchParams`, so
+    `?file=`/`?t=` are joined correctly regardless of which are present.
+- User-requested fix, same session: opening a working directory no
+  longer blindly opens `project.mainFile` by name even when that file
+  doesn't exist in the project (e.g. a shared/edited-elsewhere working
+  directory, or `mainFile` renamed/deleted outside the app) — it used
+  to leave the editor silently blank with the stale filename still
+  shown in the tab. `ProjectWorkspaceComponent.loadProject()` now
+  fetches the file list alongside the project and resolves the initial
+  file via `resolveInitialFile()`: prefer `mainFile` if it exists at
+  the working directory root, else the first root-level `.tex` file,
+  else the first root-level `.md` file, else nothing open. Verified
+  live: a project with no `main.tex` but a root `thesis.tex` now opens
+  `thesis.tex` automatically instead of showing a blank editor.
+- `docs/contracts/api.md`'s compile-endpoints section updated for the
+  `?file=` param and the `CompilePanelComponent` ownership change (rule
+  6).
+
 ## Done: UI overhaul M6 — PDF preview toolbar
 
 Ported app.js's `.pv-bar`/pager/zoom/log-panel-toggle, plus a real

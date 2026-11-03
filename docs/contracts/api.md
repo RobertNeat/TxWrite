@@ -47,9 +47,9 @@ needed yet since `PUT files/*` auto-creates parent directories for any path.
 Implemented on the backend (`apps/backend/src/modules/compile`),
 feature/projects-and-compile branch:
 
-- `POST /api/projects/:id/compile` — compile `.tex` and `.md` (via pandoc, through
-  a dedicated Lua filter that rewrites `.svg` image references to `.pdf` since
-  SVGs are pre-converted — `docker/pandoc-filters/svg-to-pdf.lua`), with a
+- `POST /api/projects/:id/compile?file=` — compile `.tex` and `.md` (via pandoc,
+  through a dedicated Lua filter that rewrites `.svg` image references to `.pdf`
+  since SVGs are pre-converted — `docker/pandoc-filters/svg-to-pdf.lua`), with a
   reactive retry loop (architecture.md section 5.3/6.2): on a missing-package
   error, resolves the file to a TeX Live package via a build-time index and
   installs it through `tlmgr`, then retries, capped by a time budget
@@ -59,15 +59,29 @@ feature/projects-and-compile branch:
   (`{ packageName, installed, message? }` per package the retry loop
   attempted) synchronously in the response body, in addition to the
   `compile.*`/`install.*` SSE events (compile events always emitted, even if a
-  pre-step like pandoc throws).
-- `GET /api/projects/:id/output.pdf` — streams the most recent compiled PDF,
-  with `Cache-Control: no-store` (feature/frontend-wiring) so a recompile is
-  never masked by a stale cached response.
+  pre-step like pandoc throws). The optional `?file=` query param compiles that
+  project-relative path instead of the project's configured `mainFile` (user
+  request, UI overhaul M6 follow-up: compiling shouldn't require the open file
+  to be named `main.tex`) — validated the same way `mainFile` is
+  (`isValidMainFile`) plus an existence check against the project directory
+  (400 if either fails). `GET /output.pdf` and `GET /synctex` take the same
+  `?file=` param, so the PDF/synctex endpoints stay in sync with whichever
+  target was actually compiled.
+- `GET /api/projects/:id/output.pdf?file=` — streams the most recent compiled
+  PDF for the given target (or `mainFile` if `file` is absent), with
+  `Cache-Control: no-store` (feature/frontend-wiring) so a recompile is never
+  masked by a stale cached response.
+- `GET /api/projects/:id/synctex?page&x&y&file=` — maps a PDF click back to a
+  project-relative source file + line via `synctex edit` (UI overhaul M6).
 
-`POST /compile` consumed by the compile button (CompilePanelComponent), which
-also renders `installs`/`diagnostics` from the synchronous response and a live
-log from the `compile.*`/`install.*` SSE events. `GET /output.pdf` consumed by
-PdfPreviewComponent (renders page 1 via pdf.js), refreshed when a compile
-response's `pdfPath` is non-null.
+`POST /compile` consumed by `PdfPreviewComponent`'s `.pv-bar` compile button,
+which also drives `CompilePanelComponent` (now presentational — takes
+`[result]` as an input) rendering `installs`/`diagnostics` from the synchronous
+response and a live log from the `compile.*`/`install.*` SSE events.
+`GET /output.pdf` consumed by `PdfPreviewComponent` (renders all pages via
+pdf.js), refreshed when a compile response's `pdfPath` is non-null. All three
+endpoints' `?file=` is driven by `ProjectWorkspaceComponent`'s `compileTarget`
+computed signal: the currently open file when it's `.tex`/`.md`, otherwise
+`undefined` (backend defaults to `mainFile`).
 
 Nothing left unconsumed in this section.

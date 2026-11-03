@@ -32,13 +32,20 @@ export class CompileController {
   ) {}
 
   @Post('compile')
-  async compile(@Param('id') id: string): Promise<CompileResultWithInstalls> {
-    return this.compileService.compile(id);
+  async compile(
+    @Param('id') id: string,
+    @Query('file') file?: string,
+  ): Promise<CompileResultWithInstalls> {
+    return this.compileService.compile(id, file);
   }
 
   @Get('output.pdf')
-  getOutputPdf(@Param('id') id: string, @Res() reply: FastifyReply): void {
-    const pdfPath = this.compileService.outputPdfPath(id);
+  getOutputPdf(
+    @Param('id') id: string,
+    @Query('file') file: string | undefined,
+    @Res() reply: FastifyReply,
+  ): void {
+    const pdfPath = this.compileService.outputPdfPath(id, file);
     if (!existsSync(pdfPath)) {
       throw new NotFoundException('No compiled PDF for this project yet');
     }
@@ -57,12 +64,14 @@ export class CompileController {
     @Query('page') page: string,
     @Query('x') x: string,
     @Query('y') y: string,
+    @Query('file') file?: string,
   ): Promise<SynctexEditResult> {
     return this.synctexService.edit(
       id,
       parseCoordinate('page', page),
       parseCoordinate('x', x),
       parseCoordinate('y', y),
+      file,
     );
   }
 }
