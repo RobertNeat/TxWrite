@@ -1,0 +1,66 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 44%;
+}
+
+.ol-h {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  flex: none;
+}
+
+.ol-h h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ol {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+.ol button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 5px 8px 5px calc(8px + var(--lv) * 14px);
+  border-radius: 6px;
+  font-size: 13.5px;
+}
+
+.ol button:hover {
+  background: var(--tint);
+}
+
+.ol .n {
+  flex: none;
+  min-width: 24px;
+  font: 400 11.5px var(--mono);
+  color: var(--muted);
+  text-align: right;
+}
+
+.ol .empty {
+  padding: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}

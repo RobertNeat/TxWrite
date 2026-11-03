@@ -6,6 +6,7 @@
   aria-label="Pliki projektu"
   (click)="selectBackground()"
   (dragover)="handleDragOver(null, $event)"
+  (dragleave)="handleTreeDragLeave($event)"
   (drop)="handleDrop(null, $event)"
 >
   @for (row of rows(); track isNewEntryRow(row) ? 'new-' + row.newEntryParentPath : row.node.path) {

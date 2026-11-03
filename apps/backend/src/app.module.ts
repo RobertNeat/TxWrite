@@ -18,6 +18,10 @@ import { JobQueueModule } from './modules/job-queue/job-queue.module.js';
     ServeStaticModule.forRoot({
       rootPath: join(import.meta.dirname, '..', 'public'),
       exclude: ['/api/{*splat}'],
+      // Angular is a client-routed SPA — any non-API, non-asset path (e.g. a
+      // direct load or refresh of /projects/:id) must still resolve to
+      // index.html so the Angular router can take over.
+      serveStaticOptions: { fallthrough: true },
     }),
     HealthModule,
     EventsModule,

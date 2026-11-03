@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  HostListener,
   OnChanges,
   SimpleChanges,
   ViewChild,
@@ -258,6 +259,26 @@ export class FileTreeComponent implements OnChanges {
   handleDragEnd(): void {
     this.dragPath.set(null);
     this.dropTargetPath.set(null);
+  }
+
+  /**
+   * Safety net for handleDragEnd(): dragend fires on the drag source, but if
+   * the dragged row was re-rendered (tree refresh) mid-drag its listener is
+   * detached and never fires, leaving the drop highlight stuck. Any dragend
+   * anywhere in the document means the browser's drag operation is over.
+   */
+  @HostListener('document:dragend')
+  handleDocumentDragEnd(): void {
+    this.dragPath.set(null);
+    this.dropTargetPath.set(null);
+  }
+
+  /** Clears the drop highlight when the pointer leaves the tree without dropping (external-file drag). */
+  handleTreeDragLeave(event: DragEvent): void {
+    const related = event.relatedTarget as Node | null;
+    if (!related || !(event.currentTarget as HTMLElement).contains(related)) {
+      this.dropTargetPath.set(null);
+    }
   }
 
   handleDragOver(targetNode: TreeNode | null, event: DragEvent): void {

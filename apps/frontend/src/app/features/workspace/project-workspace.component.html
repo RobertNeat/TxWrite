@@ -111,6 +111,12 @@
         [mainFile]="project()?.mainFile ?? ''"
         (fileOpened)="openFile($event)"
       />
+
+      <app-outline
+        [path]="outlinePath()"
+        [content]="outlineContent()"
+        (jump)="jumpToOutlineTarget($event)"
+      />
     </aside>
 
     <div
@@ -152,7 +158,12 @@
           </div>
         }
       </div>
-      <app-editor [projectId]="projectId()" [filePath]="activePath()" [jumpTarget]="jumpTarget()" />
+      <app-editor
+        [projectId]="projectId()"
+        [filePath]="activePath()"
+        [jumpTarget]="jumpTarget()"
+        (contentChanged)="onEditorContentChanged($event)"
+      />
     </section>
 
     <div

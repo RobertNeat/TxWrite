@@ -252,11 +252,12 @@
   font-size: 13px;
 }
 
-.side ::ng-deep app-file-tree {
+.side ::ng-deep app-file-tree,
+.side ::ng-deep app-outline {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  flex: 1;
 }
 
 .ic {
@@ -284,7 +285,10 @@
 }
 
 .ed ::ng-deep app-editor {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 

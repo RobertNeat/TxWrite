@@ -3,7 +3,79 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
-## Active: UI overhaul M3 — editor screen file tree, tabs, resizable panels
+## Active: UI overhaul M4 — document outline panel wired to the open file
+
+- `OutlineComponent` (`#outline-header`/`#outline-list`) ported from app.js's
+  `renderOutline()`: parses the active file's headings on every load/edit,
+  shows only the current document's sections (no cross-file `\input{...}`
+  entries), re-renders on tab switch. `.md` files use `#`-level headings,
+  `.tex` files use `\part|chapter|section|subsection|subsubsection|paragraph`
+  plus two special cases (`\begin{abstract}` → "Streszczenie",
+  `\printbibliography` → "Literatura"), `.bib` files always show "Brak
+  sekcji w tym pliku.", binary/non-text files show "Plik binarny nie ma
+  sekcji." (reusing `isTextFile` from the file-tree model).
+- `EditorComponent` gained a `contentChanged` output (`{path, content} |
+  null`), emitted after every `setState` (initial load) and on every
+  `docChanged` update, plus `null` on `clear()`. `ProjectWorkspaceComponent`
+  gates the outline's `path`/`content` inputs on `payload.path ===
+  activePath()` to avoid a one-tick flash of the previous file's outline
+  during the async tab-switch load.
+- Clicking an outline entry now selects the whole line in the editor (not
+  just a cursor placement) — `applyJumpTarget` dispatches `{anchor:
+  line.from, head: line.to}`, matching app.js's `gotoLine`'s
+  `setSelectionRange`. This also improves the existing compile-log
+  "plik:wiersz" jump and SyncTeX double-click, which share the same
+  `jumpTarget` mechanism.
+- Left-panel layout split: `FileTreeComponent`'s host is now `flex: 1 1 56%`
+  and `OutlineComponent` is `flex: 1 1 44%`, both scrolling independently
+  inside `.side` (matching the mockup's `.tree`/`.ol` height shares).
+- Fixed after user review (not file-tree-only — pulled forward while
+  working in the same files):
+  - SPA deep-link fallback: a direct load/refresh of e.g. `/projects/:id`
+    returned a raw `{"message":"Not Found","statusCode":404}` from the
+    Fastify static-file layer instead of serving `index.html` for Angular's
+    router to take over. `ServeStaticModule.forRoot()` needed
+    `serveStaticOptions: { fallthrough: true }` — Fastify's loader already
+    registers a `*` catch-all `GET` route (unlike Express, whose default
+    render path needed an explicit override), but without `fallthrough`
+    that route always 404s instead of serving the index file.
+  - File-tree drag-and-drop: dragging a row over the tree (highlighting a
+    drop target) and then releasing outside a valid target left the
+    `.row.drop`/`.tree.drop` highlight stuck for the rest of the session
+    (only a full page refresh cleared it). Added a `document:dragend`
+    `@HostListener` as a safety net (covers the case where the dragged
+    row's own `dragend` listener is detached by a mid-drag tree
+    re-render) and a `dragleave` handler on the root tree container to
+    clear `dropTargetPath` when the pointer actually leaves the tree
+    without dropping.
+  - Editor pane had no internal scroll: a long file grew `#editor-host`
+    (and the whole page) instead of scrolling within the middle panel —
+    unlike the PDF preview pane (`.pv { overflow: auto }`), which already
+    scrolled correctly. Root cause was the custom element `app-editor`
+    defaulting to `display: inline` from outside, so the `.ed ::ng-deep
+    app-editor { flex: 1; min-height: 0 }` rule had no effect (an inline
+    box isn't a flex item in the sizing sense that matters here) and
+    CodeMirror's `.cm-scroller` (which does have `overflow: auto` by
+    default) was never actually height-constrained. Fixed by giving
+    `app-editor` (and `app-file-tree`/`app-outline`, same pattern)
+    `display: flex` from the parent, plus explicit `min-height: 0` /
+    `overflow: hidden` on `EditorComponent`'s own `:host`. That in turn
+    needed `flex-direction: column` + `min-width: 0` on `app-editor`
+    (the default `row` direction stopped `#editor-host` from stretching
+    to the panel's full width — caught and fixed in the same pass).
+  - SPA-fallback side effect: the same `fallthrough: true` fix that made
+    `/projects/:id` survive a refresh also made an unmatched `/api/*`
+    path (typo, removed endpoint) silently return `index.html` with a
+    200 instead of 404 — Fastify's `ServeStaticModule` catch-all route
+    has no built-in awareness of the `exclude` option. Fixed with a
+    `preHandler` hook in `main.ts` that 404s any request whose URL
+    starts with `/api/` and whose matched route is the `*` catch-all
+    (checked in `preHandler`, not `onRequest`, since `routeOptions` is
+    only populated once Fastify has resolved the route).
+- Not in this milestone: formatting toolbar, symbols panel, PDF preview
+  toolbar (M5–M7).
+
+## Done earlier this session: UI overhaul M3 — editor screen file tree, tabs, resizable panels
 
 - Resizable panels between file-tree/editor/preview, ported app.js's
   `mkResizer`: pointer-drag and arrow-key resizing, clamped
@@ -92,8 +164,5 @@ projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 - Template gallery content
 - Revisit ORM/query-builder choice once a maintained node:sqlite driver exists for drizzle-orm (or similar)
 - Auto-compile on edit
-- SPA deep-link fallback (direct navigation to e.g. /projects/:id returns a
-  raw 404 JSON from the backend instead of serving index.html — noticed while
-  testing M3 in a fresh tab; only matters outside client-side navigation)
 - See docs/contracts/milestones.md for the full UI-overhaul + backend-gap milestone list
 - See docs/contracts/api.md for open backend/frontend contract items

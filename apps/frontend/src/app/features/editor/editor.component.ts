@@ -8,6 +8,7 @@ import {
   ViewChild,
   inject,
   input,
+  output,
 } from '@angular/core';
 import type { Extension } from '@codemirror/state';
 import { ApiService } from '../../core/api/api.service.js';
@@ -42,6 +43,16 @@ function languageExtensionFor(path: string): Promise<Extension> {
       .editor-host {
         display: block;
         height: 100%;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .editor-host ::ng-deep .cm-editor {
+        height: 100%;
+      }
+
+      .editor-host ::ng-deep .cm-scroller {
+        overflow: auto;
       }
     `,
   ],
@@ -52,6 +63,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   readonly projectId = input.required<string>();
   readonly filePath = input<string | null>(null);
   readonly jumpTarget = input<JumpTarget | null>(null);
+  readonly contentChanged = output<{ path: string; content: string } | null>();
 
   @ViewChild('host', { static: true }) private host!: ElementRef<HTMLElement>;
 
@@ -128,11 +140,13 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               this.scheduleSave(path);
+              this.contentChanged.emit({ path, content: update.state.doc.toString() });
             }
           }),
         ],
       }),
     );
+    this.contentChanged.emit({ path, content });
   }
 
   private async applyJumpTarget(): Promise<void> {
@@ -147,7 +161,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     const lineNumber = Math.min(Math.max(target.line, 1), this.view.state.doc.lines);
     const line = this.view.state.doc.line(lineNumber);
     this.view.dispatch({
-      selection: { anchor: line.from },
+      selection: { anchor: line.from, head: line.to },
       effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
     });
     this.view.focus();
@@ -162,6 +176,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.view.setState(
       EditorState.create({ doc: '', extensions: [EditorState.readOnly.of(true)] }),
     );
+    this.contentChanged.emit(null);
   }
 
   private scheduleSave(path: string): void {

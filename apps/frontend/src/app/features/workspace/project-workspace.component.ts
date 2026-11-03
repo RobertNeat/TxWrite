@@ -7,6 +7,7 @@ import {
   OnInit,
   ViewChild,
   afterNextRender,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -20,6 +21,7 @@ import type { CompileResult, Profile, Project } from '../../core/api/api.types.j
 import { FileTreeComponent } from '../file-tree/file-tree.component.js';
 import { tagFor } from '../file-tree/file-tree.model.js';
 import { EditorComponent, type JumpTarget } from '../editor/editor.component.js';
+import { OutlineComponent } from '../outline/outline.component.js';
 import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
 import { PdfPreviewComponent } from '../pdf-preview/pdf-preview.component.js';
 import { StatusBarComponent } from '../status-bar/status-bar.component.js';
@@ -38,6 +40,7 @@ const KEY_STEP = 32;
     BrandComponent,
     FileTreeComponent,
     EditorComponent,
+    OutlineComponent,
     CompilePanelComponent,
     PdfPreviewComponent,
     StatusBarComponent,
@@ -58,6 +61,7 @@ export class ProjectWorkspaceComponent implements OnInit {
   protected readonly profile = signal<Profile | null>(null);
   protected readonly profileWorkspaces = signal<Project[]>([]);
   protected readonly jumpTarget = signal<JumpTarget | null>(null);
+  protected readonly editorContent = signal<{ path: string; content: string } | null>(null);
   protected readonly isMarkdownProject = signal(false);
   protected readonly pdfRefreshToken = signal(0);
 
@@ -206,6 +210,25 @@ export class ProjectWorkspaceComponent implements OnInit {
 
   jumpToFile(target: JumpTarget): void {
     this.openFile(target.path);
+    this.jumpTarget.set(target);
+  }
+
+  onEditorContentChanged(payload: { path: string; content: string } | null): void {
+    this.editorContent.set(payload);
+  }
+
+  /** Guards against the brief async window where the editor still holds the previous tab's payload. */
+  protected readonly outlinePath = computed(() => {
+    const payload = this.editorContent();
+    return payload && payload.path === this.activePath() ? payload.path : null;
+  });
+
+  protected readonly outlineContent = computed(() => {
+    const payload = this.editorContent();
+    return payload && payload.path === this.activePath() ? payload.content : null;
+  });
+
+  jumpToOutlineTarget(target: JumpTarget): void {
     this.jumpTarget.set(target);
   }
 

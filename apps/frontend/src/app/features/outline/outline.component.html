@@ -1,0 +1,24 @@
+<div id="outline-header" class="ol-h">
+  <h2>Struktura dokumentu</h2>
+</div>
+<ul id="outline-list" class="ol" aria-label="Struktura dokumentu">
+  @if (isBinary()) {
+    <li class="empty">Plik binarny nie ma sekcji.</li>
+  } @else if (items().length) {
+    @for (item of items(); track item.ln) {
+      <li>
+        <button
+          [id]="'outline-item-' + item.ln"
+          type="button"
+          [style.--lv]="item.lv"
+          (click)="selectItem(item.ln)"
+        >
+          <span class="n">{{ item.ln }}</span>
+          <span>{{ item.t }}</span>
+        </button>
+      </li>
+    }
+  } @else {
+    <li class="empty">Brak sekcji w tym pliku.</li>
+  }
+</ul>
