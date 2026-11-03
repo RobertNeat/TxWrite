@@ -1,6 +1,8 @@
 export interface CompileDiagnostic {
   severity: 'error' | 'warning';
   message: string;
+  /** The error/warning kind as TeX itself names it (e.g. "LaTeX Error", "Package tikz Error"), when the message has that form. */
+  errorType?: string;
   file?: string;
   line?: number;
 }
@@ -37,6 +39,34 @@ const TIKZ_LIBRARY_FILENAME = /files named (\S+\.code\.tex)/;
 // that don't have a file:line prefix (e.g. emergency stops before TeX knows a location).
 const BARE_ERROR = /^! (.+)$/;
 
+// TeX's own generic follow-up boilerplate after a real error has already been
+// reported (with its own message, usually via FILE_LINE_ERROR/BARE_ERROR just
+// above) — carries no information of its own (no file, no line, no specifics),
+// so surfacing it as a second "diagnostic" just repeats "something went
+// wrong" without saying what. Verified against a real compile's raw log:
+// these appear as "! Emergency stop." and "! ==> Fatal error occurred, no
+// output PDF file produced!" (the leading space before "==>" is real TeX
+// output, not a formatting artifact here).
+const GENERIC_FOLLOWUP = /^(Emergency stop\.|\s*==> Fatal error occurred,.*)$/;
+
+// TeX/LaTeX's own convention for naming an error/warning kind: "<Type> Error: <detail>"
+// or "<Type> Warning: <detail>" (e.g. "LaTeX Error: ...", "Package tikz Error: ...",
+// "pdfTeX warning: ..."). Only messages that actually have this shape get split; a
+// message like "Undefined control sequence." has no such prefix and is left as-is
+// rather than guessing a type for it.
+const ERROR_TYPE_PREFIX = /^(.+? (?:[Ee]rror|[Ww]arning)): (.+)$/;
+
+function splitErrorType(message: string): {
+  errorType?: string;
+  message: string;
+} {
+  const match = ERROR_TYPE_PREFIX.exec(message);
+  if (!match) {
+    return { message };
+  }
+  return { errorType: match[1], message: match[2] };
+}
+
 /**
  * Parses a latexmk/*latex log (compiled with -file-line-error -interaction=nonstopmode)
  * into structured diagnostics. Built from real logs captured against the pinned
@@ -58,18 +88,23 @@ export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
         seenMissingFiles.add(fileName);
         missingFiles.push({ fileName });
       }
-      diagnostics.push({ severity: 'error', message: line.trim() });
+      diagnostics.push({
+        severity: 'error',
+        ...splitErrorType(line.trim().replace(/^!\s*/, '')),
+      });
       continue;
     }
 
     const fileLineMatch = FILE_LINE_ERROR.exec(line);
     if (fileLineMatch) {
-      diagnostics.push({
-        severity: 'error',
-        file: fileLineMatch[1],
-        line: Number(fileLineMatch[2]),
-        message: fileLineMatch[3],
-      });
+      if (!GENERIC_FOLLOWUP.test(fileLineMatch[3])) {
+        diagnostics.push({
+          severity: 'error',
+          file: fileLineMatch[1],
+          line: Number(fileLineMatch[2]),
+          ...splitErrorType(fileLineMatch[3]),
+        });
+      }
 
       // tikz's "library not found" error names the candidate filenames
       // (tikzlibrarycd.code.tex, pgflibrarycd.code.tex) in the same message
@@ -91,8 +126,11 @@ export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
     }
 
     const bareErrorMatch = BARE_ERROR.exec(line);
-    if (bareErrorMatch) {
-      diagnostics.push({ severity: 'error', message: bareErrorMatch[1] });
+    if (bareErrorMatch && !GENERIC_FOLLOWUP.test(bareErrorMatch[1])) {
+      diagnostics.push({
+        severity: 'error',
+        ...splitErrorType(bareErrorMatch[1]),
+      });
     }
   }
 

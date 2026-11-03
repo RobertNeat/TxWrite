@@ -3,6 +3,94 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
+## Done: UI overhaul M7 — status bar and remaining visual polish pass
+
+Scoped with the user via AskUserQuestion before implementing:
+
+- **Status bar** (`StatusBarComponent`): show only the compile engine
+  (pdflatex/xelatex/lualatex → "pdfLaTeX"/"XeLaTeX"/"LuaLaTeX") and the
+  connection indicator. Explicitly dropped per user decision: the
+  mockup's warning count (no real warning parsing exists — error count
+  would be a different number than what the mockup shows, and a fake
+  warning count is worse than none), "· Biber" (nothing detects
+  whether biblatex/biber is actually in use), and the
+  "UTF-8 · LF · wcięcie: 2 spacje" segment (none of these are real,
+  tracked settings — CodeMirror doesn't configure or enforce them).
+- **Log panel: redesigned through several rounds of live user feedback**
+  (ended up well beyond the initial restyle scope — rule 7's "actively
+  planned work" section, not a one-shot item):
+  - Panel header's warning count replaced with a correctly-pluralized
+    Polish error count (real data — no warning parsing exists yet).
+  - `CompilePanelComponent`'s body iterated from "restyled diagnostics
+    list + raw SSE event log" down to, per explicit user instruction,
+    **just the diagnostics, nothing else**: no "Diagnostyka"/"Dziennik"
+    section titles, no "Kompilacja nieudana/udana" status line, no SSE
+    event stream at all (its only content was `compile.started`/
+    `compile.finished` — the user noted this "nic nie mówi", says
+    nothing). A successful compile was first left genuinely empty, but
+    the user asked for a one-line confirmation instead ("żeby nie było
+    pusto... użytkownik może się zastanawiać czy aby na pewno wszystko
+    poszło dobrze") — `[ok] Kompilacja zakończona powodzeniem`.
+  - Each diagnostic is one line: `[severity] line N -- file F --
+    message`, only "line N" clickable (jumps to source) — not the
+    whole message, not file, not severity. Black text throughout
+    (`#000`), including the `[ok]` line — explicit user correction
+    after an initial green/red color choice.
+  - **Real parser bug found and fixed, not a frontend cover-up**: TeX's
+    own generic follow-up lines ("Emergency stop.", "==> Fatal error
+    occurred, no output PDF file produced!") carry no file/line/detail
+    of their own and were being surfaced as separate "diagnostics"
+    alongside the one real error — e.g. one `\begin{document}` typo
+    produced 3 diagnostic entries, 2 of which said nothing useful.
+    `log-parser.ts` now recognizes and drops only these two specific
+    boilerplate patterns (new `GENERIC_FOLLOWUP` regex, matched against
+    real log output — new `emergency-stop.log` fixture captured from a
+    live compile, not invented) — the raw `log` string field is
+    untouched for anyone who wants the full transcript; only the
+    *structured* diagnostics list is cleaned up. Also added
+    `CompileDiagnostic.errorType` (`splitErrorType()`): recognizes TeX's
+    own "<Type> Error:"/"<Type> Warning:" message convention and
+    extracts it structurally rather than leaving it jammed into
+    `message` — but ended up unused in the final one-line format (the
+    user wanted `[severity]`, not `[errorType]`); kept since it's
+    correctly parsed, real, tested data, available for later UI.
+  - Compact monospace, normal letter-spacing/line-height (an initial
+    pass had both too wide — user correction), black-on-white
+    throughout.
+- **Empty vs. error state**: a 404 from `output.pdf` (never compiled)
+  shows the existing neutral "no preview yet" message instead of the
+  red load-failure message, which should be reserved for an actual
+  load error.
+- **Pager "1/0" with no document**: show nothing/blank instead.
+- **`.pv-bar` height**: match the tabs row height exactly (mockup
+  `uwagi-ux-edytor.md` line 134) — currently 42px vs 40px.
+- **Missing editor shortcuts**: Ctrl+S (currently opens Chrome's save
+  dialog), Ctrl+B/Ctrl+I (bold/italic toolbar actions), Tab-inserts-
+  spaces/Escape-releases-tab-trap from the mockup's `app.js` keydown
+  handler (~line 455-470).
+
+Also fixed before starting M7 (found while reviewing the M6 follow-up
+commit per the user's request to "przetestuj w chrome"):
+- **PDF reloaded on every tab switch, not just after a real compile.**
+  `PdfPreviewComponent.ngOnChanges` reloaded the PDF whenever
+  `compileTarget()` changed — which happens on every tab switch,
+  including a double-click/diagnostic-jump into a different file.
+  Since that file usually hasn't been compiled, this replaced a
+  perfectly good preview with the "failed to load" error the instant
+  you jumped to source. Fixed with a `compiledTarget`/`compiledIsMarkdown`
+  pair that only updates after a compile actually succeeds for that
+  file, decoupled from the live `compileTarget()` input; the PDF now
+  only reloads on `projectId` change (switching projects) or a
+  successful compile.
+
+Known limitation not addressed this pass (reported to the user, not
+fixed): two files with the same basename in different directories
+(e.g. `a/main.tex` and `b/main.tex`), or `main.tex` next to `main.md`
+in the same project, share one `<basename>.pdf`/aux-file set in the
+cache work directory — compiling one then viewing/synctex-ing the
+other would show stale output. Not a regression from this session;
+pre-existing in `compile-runner.service.ts`'s work-dir layout.
+
 ## Done: M6 follow-up fixes — compile target file + regressions from the M6 commit
 
 User-requested fix: compiling no longer requires the open file to be

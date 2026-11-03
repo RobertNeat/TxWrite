@@ -9,11 +9,11 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 2px;
-  height: 42px;
+  gap: 8px;
+  height: 40px;
   padding: 0 10px;
   border-bottom: 1px solid var(--line);
-  background: #fff;
+  background: var(--bg);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;

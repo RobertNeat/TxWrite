@@ -5,7 +5,6 @@ this list right before the commit that finishes it. See
 `docs/currentwork/plan.md` for the active milestone's detail and
 `CLAUDE.md` rule 8.
 
-- UI overhaul M7: status bar and remaining visual polish pass
 - Backend: empty directory creation endpoint (mockup item `#bDir`)
 - Backend: profile delete endpoint (mockup's profile "x"/environment delete)
 - Backend: ZIP export endpoint (project or single working-directory download)

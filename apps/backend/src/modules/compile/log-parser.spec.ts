@@ -57,4 +57,45 @@ describe('parseCompileLog', () => {
       fileName: 'tikzlibrarycd.code.tex',
     });
   });
+
+  it('reports only the real error from an emergency-stop log, not the generic follow-up lines', () => {
+    const log = readFixture('emergency-stop.log');
+    const result = parseCompileLog(log, false);
+    expect(result.success).toBe(false);
+    expect(result.diagnostics).toEqual([
+      {
+        severity: 'error',
+        file: './main.tex',
+        line: 1,
+        errorType: 'LaTeX Error',
+        message: 'Missing \\begin{document}.',
+      },
+    ]);
+  });
+
+  it('splits "<Type> Error: <detail>" messages into errorType/message', () => {
+    const log = readFixture('tikz-library-missing.log');
+    const result = parseCompileLog(log, true);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        errorType: 'LaTeX Error',
+        message: 'Environment tikzcd undefined.',
+      }),
+    );
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        errorType: 'Package tikz Error',
+      }),
+    );
+  });
+
+  it('leaves a message with no "<Type> Error:" prefix unsplit', () => {
+    const log = readFixture('syntax-error.log');
+    const result = parseCompileLog(log, false);
+    const diagnostic = result.diagnostics.find(
+      (d) => d.message === 'Undefined control sequence.',
+    );
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic?.errorType).toBeUndefined();
+  });
 });

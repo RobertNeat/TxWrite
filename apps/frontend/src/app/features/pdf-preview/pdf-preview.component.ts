@@ -16,6 +16,7 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
 import type { CompileResult } from '../../core/api/api.types.js';
 import type { JumpTarget } from '../editor/editor.component.js';
 import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
+import { pluralPl } from '../../shared/plural-pl.js';
 
 type PdfDocumentProxy = import('pdfjs-dist').PDFDocumentProxy;
 type PdfLoadingTask = import('pdfjs-dist').PDFDocumentLoadingTask;
@@ -167,7 +168,7 @@ interface RenderedPage {
         <div id="pv-logp" class="logp">
           <div class="logp-h">
             <h3>Logi kompilacji</h3>
-            <span id="pv-log-count" class="cnt">{{ warningLabel() }}</span>
+            <span id="pv-log-count" class="cnt">{{ errorCountLabel() }}</span>
             <span class="spacer"></span>
             <button
               id="pv-log-close"
@@ -182,8 +183,7 @@ interface RenderedPage {
           </div>
           <div class="logp-b">
             <app-compile-panel
-              [projectId]="projectId()"
-              [isMarkdownProject]="isMarkdownProject()"
+              [isMarkdownProject]="compiledIsMarkdown()"
               [result]="lastResult()"
               (jumpToFile)="jumpToFile.emit($event)"
             />
@@ -198,6 +198,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   private readonly api = inject(ApiService);
 
   readonly projectId = input.required<string>();
+  /** Whether compileTarget() (the currently open file) is Markdown — used only to seed compiledIsMarkdown on load. */
   readonly isMarkdownProject = input<boolean>(false);
   /** The file compile/preview/synctex should target — defaults to the project's mainFile when absent. */
   readonly compileTarget = input<string | undefined>(undefined);
@@ -220,6 +221,17 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   protected readonly zoom = signal(1.1);
   protected readonly editingPageInput = signal(false);
   protected readonly lastResult = signal<CompileResult | null>(null);
+  /**
+   * The file the currently-shown PDF/synctex actually belong to — decoupled
+   * from compileTarget() (the editor's active tab), which changes on every
+   * tab switch (including a jump from a double-click/diagnostic-jump into a
+   * different file). Reloading the PDF on every such switch would try to load
+   * a PDF for whatever file just became active, which usually doesn't exist.
+   * Only set when a compile actually targeted that file.
+   */
+  private compiledTarget: string | undefined;
+  /** Whether compiledTarget is Markdown — gates double-click-to-source and the log panel's generated-file note, so it must track what was actually compiled, not the currently open tab. */
+  protected readonly compiledIsMarkdown = signal(false);
 
   private fit = true;
   private doc: PdfDocumentProxy | null = null;
@@ -244,17 +256,20 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     void this.compile();
   };
 
-  protected readonly pageInputValue = () =>
-    this.editingPageInput()
+  protected readonly pageInputValue = () => {
+    if (!this.hasDocument()) {
+      return '';
+    }
+    return this.editingPageInput()
       ? String(this.currentPage())
       : `${this.currentPage()}/${this.pageCount()}`;
+  };
 
   protected readonly zoomLabel = () => `${Math.round(this.zoom() * 100)}%`;
 
-  protected readonly warningLabel = () => {
-    const count =
-      this.lastResult()?.diagnostics.filter((d) => d.severity === 'warning').length ?? 0;
-    return count === 1 ? '1 ostrzeżenie' : `${count} ostrzeżenia`;
+  protected readonly errorCountLabel = () => {
+    const count = this.lastResult()?.diagnostics.filter((d) => d.severity === 'error').length ?? 0;
+    return pluralPl(count, 'błąd', 'błędy', 'błędów');
   };
 
   ngAfterViewInit(): void {
@@ -275,7 +290,9 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   async ngOnChanges(changes: SimpleChanges): Promise<void> {
-    if (changes['projectId'] || changes['compileTarget']) {
+    if (changes['projectId']) {
+      this.compiledTarget = this.compileTarget();
+      this.compiledIsMarkdown.set(this.isMarkdownProject());
       await this.loadPdf();
     }
   }
@@ -363,15 +380,24 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     }
     this.compileInFlight = true;
     this.compiling.set(true);
+    // Captured once up front: compileTarget()/isMarkdownProject() track the
+    // active editor tab, which can change mid-compile (e.g. the user switches
+    // tabs while a slow compile is still running) — the compile and its
+    // PDF/log result must stay pinned to whichever file this specific compile
+    // actually targeted.
+    const target = this.compileTarget();
+    const targetIsMarkdown = this.isMarkdownProject();
     try {
       await this.flushEditorSave()?.();
-      const result = await this.api.compile(this.projectId(), this.compileTarget());
+      const result = await this.api.compile(this.projectId(), target);
       this.lastResult.set(result);
       this.stale.set(false);
       if (!result.success) {
         this.logOpen.set(true);
       }
       if (result.pdfPath) {
+        this.compiledTarget = target;
+        this.compiledIsMarkdown.set(targetIsMarkdown);
         await this.loadPdf();
       }
     } finally {
@@ -396,7 +422,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     const keepZoom = this.fit ? null : this.zoom();
     try {
       const pdfjs = await configureWorker();
-      const url = this.api.outputPdfUrl(projectId, this.compileTarget(), Date.now());
+      const url = this.api.outputPdfUrl(projectId, this.compiledTarget, Date.now());
       const loadingTask = pdfjs.getDocument({ url });
       const doc = await loadingTask.promise;
       if (token !== this.loadToken) {
@@ -417,11 +443,17 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
       } else {
         this.goToPage(this.currentPage());
       }
-    } catch {
+    } catch (err) {
       if (token !== this.loadToken) {
         return;
       }
-      this.error.set(true);
+      // A 404 means "never compiled yet" (output.pdf doesn't exist), not a
+      // real load failure — confirmed empirically: pdf.js rejects with a
+      // ResponseException carrying the HTTP status as `.status`. Show the
+      // neutral empty state for that, the red error only for an actual
+      // failure to load/parse an existing PDF.
+      const status = (err as { status?: number } | null)?.status;
+      this.error.set(status !== 404);
       this.hasDocument.set(false);
       this.pageCount.set(0);
     }
@@ -489,7 +521,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   }
 
   private onPageDoubleClick(event: MouseEvent, pageNumber: number, viewportHeightPx: number): void {
-    if (this.isMarkdownProject()) {
+    if (this.compiledIsMarkdown()) {
       return;
     }
     const canvas = event.target as HTMLCanvasElement;
@@ -500,7 +532,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     const xPt = (event.clientX - rect.left) / zoom;
     const yPt = (viewportHeightPx - (event.clientY - rect.top)) / zoom;
     void this.api
-      .synctexEdit(this.projectId(), pageNumber, xPt, yPt, this.compileTarget())
+      .synctexEdit(this.projectId(), pageNumber, xPt, yPt, this.compiledTarget)
       .then((result) => this.jumpToFile.emit({ path: result.path, line: result.line }))
       .catch(() => {
         // No mapped source location for this click (e.g. generated/whitespace area) — ignore.

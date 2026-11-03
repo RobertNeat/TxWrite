@@ -1,105 +1,65 @@
-import { Component, computed, inject, input, output } from '@angular/core';
-import { EventStreamService } from '../../core/events/event-stream.service.js';
-import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
-import type { AppEvent, CompileDiagnostic, CompileResult } from '../../core/api/api.types.js';
+import { Component, computed, input, output } from '@angular/core';
+import type { CompileDiagnostic, CompileResult } from '../../core/api/api.types.js';
 import type { JumpTarget } from '../editor/editor.component.js';
-
-function describeEvent(event: AppEvent): string {
-  const payload = (event.payload ?? {}) as Record<string, unknown>;
-  switch (event.type) {
-    case 'compile.started':
-      return 'compile.started';
-    case 'compile.finished':
-      return `compile.finished (success=${String(payload['success'])})`;
-    case 'install.queued':
-      return `install.queued: ${String(payload['packageName'])}`;
-    case 'install.started':
-      return `install.started: ${String(payload['packageName'])}`;
-    case 'install.finished':
-      return `install.finished: ${String(payload['packageName'])}`;
-    case 'install.failed':
-      return `install.failed: ${String(payload['packageName'])} — ${String(payload['message'])}`;
-    default:
-      return event.type;
-  }
-}
 
 function normalizeTexPath(file: string): string {
   return file.replace(/^\.\//, '');
 }
 
 /**
- * The mockup's `#logp` panel body — diagnostics (with jump-to-source) and the
- * raw event log. Purely presentational: compile state (triggering a compile,
- * `compiling`/`lastResult`) lives in `PdfPreviewComponent` instead, since that
- * component (unlike this one, which only exists while the log panel is open)
- * stays alive across the whole compile — see plan.md's M6 fix notes for why
- * the compile button silently did nothing while the panel was closed when
- * this component used to own that state itself.
+ * The log panel body. Per explicit user direction: errors only, no debug/
+ * event noise, no section titles. A successful compile shows one short
+ * confirmation line (not nothing — an empty panel left the user unsure
+ * whether it had actually run). Each diagnostic renders as one line:
+ * "[severity] line N -- file F -- message", with only "line N" clickable
+ * (jumps to that line in the editor). `diagnostics` already excludes TeX's
+ * own generic follow-up boilerplate ("Emergency stop.", "==> Fatal error
+ * occurred...") at the parser level (log-parser.ts), not here — this
+ * component never reformats or filters the real diagnostic text itself, only
+ * lays out the already-structured fields (severity/file/line/message) it's
+ * given.
  */
 @Component({
   selector: 'app-compile-panel',
   standalone: true,
-  imports: [TranslatePipe],
   template: `
     <div id="compile-panel" class="compile-panel">
-      @if (result(); as result) {
-        <p
-          [id]="'compile-result-status'"
-          class="compile-result"
-          [class.success]="result.success"
-          [class.failure]="!result.success"
-        >
-          {{ (result.success ? 'compile.success' : 'compile.failed') | t }}
-        </p>
+      @if (result()?.success && diagnostics().length === 0) {
+        <div id="compile-success" class="compile-success">
+          <span class="compile-diagnostic-severity">[ok]</span>
+          <span>Kompilacja zakończona powodzeniem</span>
+        </div>
       }
-
-      <h2 id="compile-diagnostics-title">{{ 'compile.diagnostics' | t }}</h2>
-      @if (isMarkdownProject()) {
+      @if (isMarkdownProject() && diagnostics().length > 0) {
         <p id="compile-diagnostics-note" class="compile-note">
-          {{ 'compile.generatedFileNote' | t }}
+          Dotyczy wygenerowanego pliku .tex (projekt Markdown)
         </p>
       }
-      @if (diagnostics().length === 0) {
-        <p id="compile-diagnostics-empty">{{ 'compile.noDiagnostics' | t }}</p>
-      } @else {
-        <ul id="compile-diagnostics-list">
-          @for (diagnostic of diagnostics(); track $index) {
-            <li
-              [id]="'compile-diagnostic-' + $index"
-              class="compile-diagnostic"
-              [class.error]="diagnostic.severity === 'error'"
-              [class.warning]="diagnostic.severity === 'warning'"
-            >
-              @if (diagnostic.file && diagnostic.line && !isMarkdownProject()) {
-                <button
-                  [id]="'compile-diagnostic-jump-' + $index"
-                  type="button"
-                  class="compile-diagnostic-jump"
-                  (click)="jumpTo(diagnostic)"
-                >
-                  {{ diagnostic.file }}:{{ diagnostic.line }}
-                </button>
-              } @else if (diagnostic.file && diagnostic.line) {
-                <span
-                  [id]="'compile-diagnostic-location-' + $index"
-                  class="compile-diagnostic-location"
-                >
-                  {{ diagnostic.file }}:{{ diagnostic.line }}
-                </span>
-              }
-              <span [id]="'compile-diagnostic-message-' + $index">{{ diagnostic.message }}</span>
-            </li>
+      @for (diagnostic of diagnostics(); track $index) {
+        <div [id]="'compile-diagnostic-' + $index" class="compile-diagnostic">
+          <span class="compile-diagnostic-severity">[{{ diagnostic.severity }}]</span>
+          @if (diagnostic.line) {
+            @if (diagnostic.file && !isMarkdownProject()) {
+              <button
+                [id]="'compile-diagnostic-jump-' + $index"
+                type="button"
+                class="compile-diagnostic-jump"
+                (click)="jumpTo(diagnostic)"
+              >
+                line {{ diagnostic.line }}
+              </button>
+            } @else {
+              <span>line {{ diagnostic.line }}</span>
+            }
+            <span class="compile-diagnostic-sep">--</span>
           }
-        </ul>
+          @if (diagnostic.file) {
+            <span>file {{ diagnostic.file }}</span>
+            <span class="compile-diagnostic-sep">--</span>
+          }
+          <span [id]="'compile-diagnostic-message-' + $index">{{ diagnostic.message }}</span>
+        </div>
       }
-
-      <h2 id="compile-log-title">{{ 'compile.log' | t }}</h2>
-      <ul id="compile-log-list" class="compile-log-list">
-        @for (line of logLines(); track $index) {
-          <li [id]="'compile-log-line-' + $index">{{ line }}</li>
-        }
-      </ul>
     </div>
   `,
   styles: [
@@ -107,56 +67,55 @@ function normalizeTexPath(file: string): string {
       .compile-panel {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 4px;
         padding: 10px 12px;
-      }
-      .compile-result {
-        font-weight: 600;
-      }
-      .compile-result.success {
-        color: #2a7;
-      }
-      .compile-result.failure {
-        color: #c33;
+        font-family: var(--mono, ui-monospace, monospace);
+        font-size: 12px;
+        letter-spacing: normal;
+        line-height: 1.4;
+        color: #000;
+        background: #fff;
       }
       .compile-note {
-        font-size: 0.8rem;
-        color: #999;
-      }
-      #compile-diagnostics-list {
-        list-style: none;
-        padding: 0;
         margin: 0;
+        font-size: 11px;
+        color: var(--muted, #666);
+      }
+      .compile-success {
+        display: flex;
+        gap: 0.5em;
+        color: #000;
       }
       .compile-diagnostic {
         display: flex;
-        gap: 0.4rem;
-        font-size: 0.85rem;
+        gap: 0.5em;
+        flex-wrap: wrap;
+        align-items: baseline;
+        color: #000;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
-      .compile-diagnostic.error {
-        color: #c33;
+      .compile-diagnostic-severity {
+        opacity: 0.75;
       }
-      .compile-diagnostic.warning {
-        color: #b80;
+      .compile-diagnostic-sep {
+        opacity: 0.5;
       }
       .compile-diagnostic-jump {
-        font-family: monospace;
-      }
-      .compile-log-list {
-        list-style: none;
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
         padding: 0;
-        margin: 0;
-        font-family: monospace;
-        font-size: 0.75rem;
-        overflow: auto;
+        cursor: pointer;
+      }
+      .compile-diagnostic-jump:hover {
+        text-decoration: underline;
       }
     `,
   ],
 })
 export class CompilePanelComponent {
-  private readonly eventStream = inject(EventStreamService);
-
-  readonly projectId = input.required<string>();
   readonly isMarkdownProject = input<boolean>(false);
   readonly result = input<CompileResult | null>(null);
   readonly jumpToFile = output<JumpTarget>();
@@ -164,21 +123,6 @@ export class CompilePanelComponent {
   protected readonly diagnostics = computed<CompileDiagnostic[]>(
     () => this.result()?.diagnostics ?? [],
   );
-
-  readonly warningCount = computed(
-    () => this.diagnostics().filter((d) => d.severity === 'warning').length,
-  );
-
-  protected readonly logLines = computed(() =>
-    this.eventStream
-      .events()
-      .filter((event) => event.projectId === this.projectId())
-      .map(describeEvent),
-  );
-
-  constructor() {
-    this.eventStream.connect();
-  }
 
   jumpTo(diagnostic: CompileDiagnostic): void {
     if (!diagnostic.file || !diagnostic.line) {

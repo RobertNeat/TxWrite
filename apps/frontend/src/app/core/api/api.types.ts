@@ -28,6 +28,7 @@ export interface ProjectFileEntry {
 export interface CompileDiagnostic {
   severity: 'error' | 'warning';
   message: string;
+  errorType?: string;
   file?: string;
   line?: number;
 }

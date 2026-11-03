@@ -11,8 +11,11 @@ import {
   output,
 } from '@angular/core';
 import type { Extension } from '@codemirror/state';
+import type { KeyBinding } from '@codemirror/view';
 import { ApiService } from '../../core/api/api.service.js';
 import {
+  TEMPLATES,
+  insertTemplate,
   type EditResult,
   type HeadingLevel,
   lineLevel,
@@ -122,12 +125,60 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   private async createView(): Promise<void> {
     const { EditorView, basicSetup } = await import('codemirror');
     const { EditorState } = await import('@codemirror/state');
+    const editorKeymap = await this.buildEditorKeymap();
     this.view = new EditorView({
       doc: '',
-      extensions: [basicSetup, EditorState.readOnly.of(true)],
+      extensions: [basicSetup, editorKeymap, EditorState.readOnly.of(true)],
       parent: this.host.nativeElement,
     });
     this.detachLineMarkHandlers = attachLineMarkHandlers(this.view);
+  }
+
+  /**
+   * Ports app.js's Ctrl+S/Ctrl+B/Ctrl+I/Tab handling (keydown listener around
+   * line 455) as real CodeMirror keybindings. Prec.highest so Mod-b/Mod-i win
+   * over basicSetup's defaults (which don't bind them) and indentWithTab wins
+   * over the default Tab behavior (inserting a focus-trapped indent, with
+   * Escape releasing it — @codemirror/commands' built-in equivalent of the
+   * mockup's textarea-specific "insertText two spaces" hack). Ctrl+S only
+   * flushes the pending autosave and prevents Chrome's native save dialog —
+   * the app already autosaves on every edit, so there's nothing else to do.
+   */
+  private async buildEditorKeymap(): Promise<Extension> {
+    const [{ keymap }, { Prec }, { indentWithTab }] = await Promise.all([
+      import('@codemirror/view'),
+      import('@codemirror/state'),
+      import('@codemirror/commands'),
+    ]);
+    const bindings: KeyBinding[] = [
+      indentWithTab,
+      {
+        key: 'Mod-s',
+        run: () => {
+          void this.flushSave();
+          return true;
+        },
+      },
+      {
+        key: 'Mod-b',
+        run: () => {
+          this.applyEdit((doc, from, to) =>
+            insertTemplate(doc, { from, to }, TEMPLATES[this.currentMode()]['bold']),
+          );
+          return true;
+        },
+      },
+      {
+        key: 'Mod-i',
+        run: () => {
+          this.applyEdit((doc, from, to) =>
+            insertTemplate(doc, { from, to }, TEMPLATES[this.currentMode()]['italic']),
+          );
+          return true;
+        },
+      },
+    ];
+    return Prec.highest(keymap.of(bindings));
   }
 
   private lineMarkKey(path: string): string {
@@ -154,9 +205,10 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (this.loadedPath) {
       this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
     }
-    const [{ EditorState }, languageExtension] = await Promise.all([
+    const [{ EditorState }, languageExtension, editorKeymap] = await Promise.all([
       import('@codemirror/state'),
       languageExtensionFor(path),
+      this.buildEditorKeymap(),
     ]);
     const content = await this.api.readFile(this.projectId(), path);
     this.loadedPath = path;
@@ -166,6 +218,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
         doc: content,
         extensions: [
           basicSetup,
+          editorKeymap,
           languageExtension,
           lineMarksExtension,
           EditorView.updateListener.of((update) => {
