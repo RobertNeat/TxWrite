@@ -1,50 +1,59 @@
 # Current session plan
 
-No work currently planned on `feature/frontend-wiring`. All 5 milestones
-(profile/project shell, file tree + editor, compile + log + diagnostics, PDF
-preview) are complete and committed. See git log for details.
+Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
+projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
-## Bug fixes after user testing (this session)
-- Editor accepted input with no file open (new file wasn't auto-selected after
-  creation, so pasted content went nowhere and was silently lost) — fixed:
-  FileTreeComponent.create() now auto-opens the new file, and the editor is
-  read-only until a file is actually loaded (no more silent "paste into the
-  void").
-- Save-on-switch race: editing file A then switching to file B within the
-  800ms debounce window could write A's content to B — fixed: the pending save
-  now captures its target path at edit time, and loadCurrentFile flushes any
-  pending save before swapping the editor's state.
-- Misleading compile error after a prior failed compile on unchanged sources:
-  latexmk's own "Nothing to do" cache replies with a non-zero exit code and a
-  stale "gave an error in previous invocation" meta-message instead of a fresh,
-  readable diagnostic — fixed in CompileRunnerService.runOnce: that case now
-  forces one fresh pass (reusing the existing -g/forceRebuild mechanism) so the
-  user always sees a current error, not a cached one.
-- Verified via docker compose build + the running container: a CV document
-  with lato/tikz/geometry/hyperref compiles successfully (was never actually
-  broken — the reported "crash" was the silently-lost-paste bug above); the
-  stale-failure case (empty/broken main.tex, recompiled unchanged) now reports
-  a real diagnostic (e.g. "File 'photo.jpg' not found") instead of latexmk's
-  cached meta-message.
+## Active: UI overhaul M1 — shell, routing, design tokens, login/profile screen, workspace topbar
+
+- Re-skin the app to match the mockups' visual language (navy/white panel
+  design, IBM Plex Sans / JetBrains Mono / STIX Two Text via `@fontsource/*`).
+- Merged `/` and the old `/profiles/:id/projects` route into a single screen
+  (`ProfilePickerComponent`) matching `logowanie-ui` exactly: left panel is
+  profile selector (`#profBtn`/`#profPop` dropdown, add/select only — no
+  delete, backend has no `DELETE /api/profiles/:id` yet) + that profile's
+  working directories (create, rename via kebab menu, delete via kebab +
+  confirm dialog), blurred with placeholder text pre-login; right panel is a
+  login form (no real auth — see below) that becomes an account card on
+  "sign in", with a scramble/decode text animation revealing the real profile
+  name and workspace list in the left panel (ported from app.js's
+  scramble()/animateTexts()). Logging out reverses this (scramble back to
+  placeholders, re-blur). Scramble only fires on login/logout, not on
+  switching the selected profile (explicit user call — not in the reference
+  design).
+- Workspace (editor) screen topbar: chip is the user's profile (avatar +
+  name) with an "x" that logs out (navigates to `/`), not a workspace-name
+  button — matches `edytor-ui`'s `#chipX`. Working-directory selection moved
+  to the left panel as a searchable dropdown (`#wsBtn`/`#wsPop`/`#wsQ`/`#wsList`),
+  listing the other projects owned by the same profile.
+- Popovers (profile list, kebab menu, workspace selector) are positioned
+  dynamically against their trigger button (ported app.js's `place()`), not
+  hardcoded — fixes an earlier bug where they rendered off-panel or
+  full-viewport-width.
+- Decisions made this session (see project memory `ui_overhaul_scope`):
+  - No real authentication is added (non-goal per
+    `docs/project_assumptons/project_assumptions.md`). The login form only
+    selects/reveals an existing profile — no password check, no session.
+  - Fonts are self-hosted via `@fontsource/*` packages (new dependency,
+    user-approved), not Google Fonts CDN.
+  - Anything in the mockups not backed by a real endpoint is omitted from the
+    UI entirely (not stubbed/disabled) — see `docs/contracts/milestones.md`
+    for the backend-gap items split out as their own future milestones
+    (profile delete, ZIP import/export, file upload, empty-dir creation).
+  - Project rename (kebab "Edytuj nazwę") now wired to the existing
+    `PUT /api/projects/:id`, closing that previously-unconsumed contract gap.
+- File tree internals (drag/drop, per-file kebab, nested folders), the
+  formatting toolbar, symbols panel, and PDF preview toolbar are still the
+  old bare UI — out of scope for this milestone, covered by later
+  UI-overhaul milestones in `docs/contracts/milestones.md`.
 
 # Postponed for future sessions
 
-- **UI/UX overhaul** (user-flagged, 2026-11-02): current UI is functional but
-  deliberately bare — a CSS grid shell with no visual design, spacing,
-  contrast, or responsiveness. User approved doing this as its own dedicated
-  branch after functional work settles, not mixed with logic changes. Includes
-  at minimum: visual design pass, layout/spacing, and reconsidering
-  interaction patterns that are impractical (e.g. window.prompt()-based
-  rename).
-- File upload endpoint (would also let users import an existing .tex instead
-  of hand-typing/pasting into the editor — directly related to the paste bug
-  above, since there'd be a less error-prone path for bringing in an existing
-  document).
 - Container startup readiness/healthcheck (entrypoint's luaotfload warmup blocks HTTP briefly on a fresh /cache volume)
 - Font resolution (chain beyond "already installed")
 - UID/mount-namespace isolation for compile child processes (architecture.md section 8)
 - Prefetch watcher logic
-- Template gallery content, zip import/export
+- Template gallery content
 - Revisit ORM/query-builder choice once a maintained node:sqlite driver exists for drizzle-orm (or similar)
 - Auto-compile on edit
+- See docs/contracts/milestones.md for the full UI-overhaul + backend-gap milestone list
 - See docs/contracts/api.md for open backend/frontend contract items

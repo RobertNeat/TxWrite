@@ -1,0 +1,353 @@
+<div id="profile-picker-page" class="page">
+  <div id="profile-picker-brand" class="brand-pos">
+    <app-brand />
+  </div>
+
+  <main id="profile-picker-panel" class="panel">
+    <section id="profile-picker-left" class="left" aria-label="Profile i katalogi robocze">
+      <div
+        id="profile-picker-lbody"
+        #lbody
+        class="lbody"
+        [class.locked]="!loggedIn()"
+        [attr.aria-hidden]="!loggedIn() ? 'true' : null"
+        [attr.inert]="!loggedIn() ? '' : null"
+      >
+        <div class="lhead">
+          <button
+            id="profBtn"
+            #profBtn
+            class="prof-btn"
+            type="button"
+            aria-haspopup="listbox"
+            [attr.aria-expanded]="profilePopoverOpen()"
+            aria-controls="profPop"
+            (click)="$event.stopPropagation(); toggleProfilePopover()"
+          >
+            @if (loggedIn() && currentProfile()) {
+              <span class="av">{{ initials(currentProfile()!.displayName) }}</span>
+            } @else {
+              <span class="av">+</span>
+            }
+            <span class="pt">
+              <small>Profil</small>
+              <span class="t">{{ displayProfileName() }}</span>
+            </span>
+            <svg class="ic" aria-hidden="true"><use href="#i-chev-d" /></svg>
+          </button>
+        </div>
+
+        <div class="lcap">
+          <span>Katalogi robocze</span>
+          <span class="cn">{{ displayWorkspaceNames().length }}</span>
+        </div>
+
+        @if (!loggedIn()) {
+          <ul id="workspace-list-placeholder" class="wlist">
+            @for (name of displayWorkspaceNames(); track name) {
+              <li class="card">
+                <span class="open">
+                  <span class="fi"
+                    ><svg class="ic lg" aria-hidden="true"><use href="#i-folder" /></svg
+                  ></span>
+                  <span class="nm t">{{ name }}</span>
+                </span>
+              </li>
+            }
+          </ul>
+        } @else if (currentProfileProjects().length) {
+          <ul id="workspace-list" class="wlist">
+            @for (project of currentProfileProjects(); track project.id) {
+              <li [id]="'workspace-item-' + project.id" class="card">
+                @if (renamingProjectId() === project.id) {
+                  <form class="open" (ngSubmit)="confirmRename(project)">
+                    <span class="fi"
+                      ><svg class="ic lg" aria-hidden="true"><use href="#i-folder" /></svg
+                    ></span>
+                    <input
+                      [id]="'workspace-rename-' + project.id"
+                      class="rn-in"
+                      type="text"
+                      [(ngModel)]="renameValue"
+                      name="renameValue"
+                      autocomplete="off"
+                      aria-label="Nazwa katalogu roboczego"
+                      (keydown.escape)="cancelRename()"
+                      (blur)="cancelRename()"
+                    />
+                  </form>
+                } @else {
+                  <button
+                    [id]="'workspace-open-' + project.id"
+                    class="open"
+                    type="button"
+                    (click)="openProject(project)"
+                  >
+                    <span class="fi"
+                      ><svg class="ic lg" aria-hidden="true"><use href="#i-folder" /></svg
+                    ></span>
+                    <span class="nm t">{{ project.name }}</span>
+                  </button>
+                }
+                <button
+                  [id]="'workspace-kebab-' + project.id"
+                  #kebabBtn
+                  class="kebab"
+                  type="button"
+                  aria-haspopup="menu"
+                  [attr.aria-expanded]="kebabForProjectId() === project.id"
+                  [attr.aria-label]="'Zarządzaj katalogiem ' + project.name"
+                  (click)="
+                    $event.stopPropagation();
+                    registerKebabButton(project.id, kebabBtn);
+                    openKebab(project.id)
+                  "
+                >
+                  <svg class="ic lg" aria-hidden="true"><use href="#i-kebab" /></svg>
+                </button>
+
+                @if (kebabForProjectId() === project.id) {
+                  <div
+                    [id]="'workspace-kebab-menu-' + project.id"
+                    class="pop menu"
+                    role="menu"
+                    aria-label="Zarządzaj katalogiem"
+                    (click)="$event.stopPropagation()"
+                  >
+                    <button class="mi" role="menuitem" type="button" (click)="startRename(project)">
+                      <svg class="ic" aria-hidden="true"><use href="#i-pencil" /></svg>Edytuj nazwę
+                    </button>
+                    <div class="mi-sep" role="separator"></div>
+                    <button
+                      class="mi danger"
+                      role="menuitem"
+                      type="button"
+                      (click)="askDeleteProject(project)"
+                    >
+                      <svg class="ic" aria-hidden="true"><use href="#i-trash" /></svg>Usuń
+                    </button>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="wlist">
+            <div class="empty">
+              @if (currentProfile()) {
+                <b>Brak katalogów roboczych</b>
+                Utwórz pierwszy katalog poniżej.
+              } @else {
+                <b>Brak profilu</b>
+                Dodaj profil z listy powyżej, aby tworzyć katalogi robocze.
+              }
+            </div>
+          </div>
+        }
+
+        <form id="newForm" class="lfoot" novalidate (ngSubmit)="createWorkspace()">
+          <label class="lf-l" for="newName">Nowy katalog roboczy</label>
+          <div class="lf-r">
+            <input
+              id="newName"
+              class="in"
+              type="text"
+              placeholder="nazwa-katalogu"
+              autocomplete="off"
+              aria-describedby="newErr"
+              [(ngModel)]="newWorkspaceName"
+              name="newWorkspaceName"
+              [disabled]="!loggedIn() || !currentProfile()"
+              (input)="clearWorkspaceError()"
+              #newWorkspaceInput
+            />
+            <button class="btn-p" type="submit" [disabled]="!loggedIn() || !currentProfile()">
+              <svg class="ic" aria-hidden="true"><use href="#i-plus" /></svg>Utwórz
+            </button>
+          </div>
+          <div id="newErr" class="err" role="alert">{{ newWorkspaceError() }}</div>
+        </form>
+      </div>
+    </section>
+
+    <section id="profile-picker-right" class="right" aria-label="Logowanie i konto">
+      @if (!loggedIn()) {
+        <div class="rbody login">
+          <h2 tabindex="-1">Zaloguj się</h2>
+          <p class="sub">Wpisz dane konta, aby przejść do swoich profili i katalogów roboczych.</p>
+          <form id="loginForm" novalidate (ngSubmit)="submitLogin()">
+            <div class="fld">
+              <label for="em">Adres e-mail</label>
+              <input
+                id="em"
+                class="in"
+                type="email"
+                autocomplete="username"
+                placeholder="imie@przyklad.pl"
+                aria-describedby="emErr"
+                [attr.aria-invalid]="loginEmailError() ? 'true' : null"
+                [(ngModel)]="loginEmail"
+                name="loginEmail"
+                (input)="clearLoginEmailError()"
+              />
+            </div>
+            <div id="emErr" class="err" role="alert">{{ loginEmailError() }}</div>
+
+            <div class="fld">
+              <label for="pw">Hasło</label>
+              <div class="pwrap">
+                <input
+                  id="pw"
+                  class="in"
+                  [type]="loginPasswordVisible() ? 'text' : 'password'"
+                  autocomplete="current-password"
+                  aria-describedby="pwErr"
+                  [attr.aria-invalid]="loginPasswordError() ? 'true' : null"
+                  [(ngModel)]="loginPassword"
+                  name="loginPassword"
+                  (input)="clearLoginPasswordError()"
+                />
+                <button
+                  id="eye"
+                  class="eye"
+                  type="button"
+                  [attr.aria-label]="loginPasswordVisible() ? 'Ukryj hasło' : 'Pokaż hasło'"
+                  [attr.aria-pressed]="loginPasswordVisible()"
+                  (click)="togglePasswordVisibility()"
+                >
+                  <svg class="ic" aria-hidden="true">
+                    <use [attr.href]="loginPasswordVisible() ? '#i-eye-off' : '#i-eye'" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="pwErr" class="err" role="alert">{{ loginPasswordError() }}</div>
+
+            <div class="opts">
+              <label class="chk"><input type="checkbox" checked />Zapamiętaj mnie</label>
+              <button id="forgot" class="lnk" type="button" (click)="requestForgotPassword()">
+                Nie pamiętasz hasła?
+              </button>
+            </div>
+
+            <button id="loginBtn" class="btn-p" type="submit" [disabled]="loggingIn()">
+              @if (loggingIn()) {
+                <svg class="ic spin" aria-hidden="true"><use href="#i-spin" /></svg>Logowanie…
+              } @else {
+                Zaloguj się
+              }
+            </button>
+          </form>
+          <p class="demo">Wersja demonstracyjna: wpisz dowolny adres e-mail i hasło.</p>
+        </div>
+      } @else {
+        <div class="rbody acct">
+          <h2 tabindex="-1">Konto</h2>
+          <p class="sub">Dane zalogowanego użytkownika.</p>
+          <div class="who">
+            <div class="av lg" aria-hidden="true">{{ initials(accountName()) }}</div>
+            <div>
+              <div id="account-name" class="nm">{{ accountName() }}</div>
+              <div id="account-email" class="mail">{{ accountEmail() }}</div>
+            </div>
+          </div>
+          <dl class="facts">
+            <div>
+              <dt>Ostatnie logowanie</dt>
+              <dd id="account-last-login">{{ formattedLastLogin() }}</dd>
+            </div>
+            <div>
+              <dt>Aktywny profil</dt>
+              <dd id="account-active-profile">{{ currentProfile()?.displayName ?? 'brak' }}</dd>
+            </div>
+            <div>
+              <dt>Profile</dt>
+              <dd id="account-profile-count">{{ profiles().length }}</dd>
+            </div>
+            <div>
+              <dt>Katalogi robocze</dt>
+              <dd id="account-workspace-count">{{ totalProjectCount() }}</dd>
+            </div>
+          </dl>
+          <button id="logout" class="btn-o" type="button" (click)="logout()">
+            <svg class="ic" aria-hidden="true"><use href="#i-logout" /></svg>Wyloguj się
+          </button>
+        </div>
+      }
+    </section>
+  </main>
+</div>
+
+@if (profilePopoverOpen()) {
+  <div id="profPop" #profPop class="pop" (click)="$event.stopPropagation()">
+    <ul class="pl" role="listbox" aria-label="Profile użytkownika">
+      @for (profile of profiles(); track profile.id) {
+        <li class="pi" [class.on]="profile.id === currentProfileId()">
+          <button
+            class="ps"
+            type="button"
+            role="option"
+            [attr.aria-selected]="profile.id === currentProfileId()"
+            (click)="selectProfile(profile)"
+          >
+            <span class="av sm">{{ initials(profile.displayName) }}</span>
+            <span class="pn">{{ profile.displayName }}</span>
+            <small>{{ workspaceCountLabel(profile.id) }}</small>
+            @if (profile.id === currentProfileId()) {
+              <svg class="ic" aria-hidden="true"><use href="#i-check" /></svg>
+            }
+          </button>
+        </li>
+      }
+    </ul>
+    <div class="pfoot">
+      @if (addingProfile()) {
+        <form class="padd" (ngSubmit)="confirmAddProfile()">
+          <input
+            id="addPn"
+            class="in"
+            type="text"
+            placeholder="Nazwa nowego profilu"
+            autocomplete="off"
+            aria-label="Nazwa nowego profilu"
+            [(ngModel)]="newProfileName"
+            name="newProfileName"
+          />
+          <button class="btn-p" type="submit">Dodaj</button>
+        </form>
+        @if (profileNameError()) {
+          <p class="perr" role="alert">{{ profileNameError() }}</p>
+        }
+      } @else {
+        <button class="pnew" type="button" (click)="startAddProfile()">
+          <svg class="ic" aria-hidden="true"><use href="#i-plus" /></svg>Dodaj nowy profil
+        </button>
+      }
+    </div>
+  </div>
+}
+
+@if (confirmDialog()) {
+  <div id="scrim" class="scrim">
+    <div
+      class="dlg"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="dlgT"
+      aria-describedby="dlgB"
+    >
+      <h3 id="dlgT">{{ confirmDialog()!.title }}</h3>
+      <p id="dlgB">{{ confirmDialog()!.body }}</p>
+      <div class="dlg-a">
+        <button id="dlgNo" class="btn-o" type="button" (click)="closeDialog()">Anuluj</button>
+        <button id="dlgYes" class="btn-d" type="button" (click)="confirmDialogAction()">
+          Usuń
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (toastMessage()) {
+  <div id="toast" class="toast on" role="status" aria-live="polite">{{ toastMessage() }}</div>
+}

@@ -23,9 +23,8 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
 `apps/backend/src/modules/projects`), feature/projects-and-compile branch:
 
 - `GET/POST /api/profiles` — consumed (feature/frontend-wiring: profile picker)
-- `GET/POST /api/projects`, `GET/DELETE /api/projects/:id` — consumed
-  (project list). `PUT /api/projects/:id` still unconsumed (no project
-  settings/rename UI yet).
+- `GET/POST/PUT/DELETE /api/projects`, `/api/projects/:id` — consumed
+  (profile picker's workspace list/create/rename/delete, UI overhaul branch).
 - `GET/PUT/DELETE /api/projects/:id/files/*` — consumed: `GET`/`PUT` by the
   editor's load/save, `DELETE` by the file tree's delete action.
 - `GET /api/projects/:id/files` — recursive listing,
@@ -37,8 +36,7 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
   used for both rename and move. Both paths are confinement-checked. Consumed
   by the file tree's rename action (`window.prompt`-based, no modal yet).
 
-Only `PUT /api/projects/:id` (project settings/rename) remains unconsumed —
-there's no project settings UI yet. File creation has no dedicated endpoint:
+File creation has no dedicated endpoint:
 the frontend creates a new file by `PUT`-ing empty content to a new path, which
 the backend already supports (`writeFile` creates parent dirs + the file). There
 is no way to create an empty directory with no files in it from the UI; not

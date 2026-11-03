@@ -2,11 +2,6 @@ export type Lang = 'pl' | 'en';
 
 export const translations: Record<Lang, Record<string, string>> = {
   pl: {
-    'profile.pick': 'Wybierz profil',
-    'profile.create': 'Utwórz profil',
-    'profile.name': 'Nazwa wyświetlana',
-    'profile.none': 'Brak profili — utwórz pierwszy',
-    'project.list': 'Projekty',
     'project.create': 'Nowy projekt',
     'project.name': 'Nazwa projektu',
     'project.engine': 'Silnik',
@@ -14,6 +9,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'project.none': 'Brak projektów — utwórz pierwszy',
     'project.open': 'Otwórz',
     'project.delete': 'Usuń',
+    'workspace.backToProjects': 'Katalogi robocze',
     'fileTree.new': 'Nowy plik',
     'fileTree.rename': 'Zmień nazwę',
     'fileTree.delete': 'Usuń',
@@ -33,11 +29,6 @@ export const translations: Record<Lang, Record<string, string>> = {
     'common.save': 'Zapisz',
   },
   en: {
-    'profile.pick': 'Choose a profile',
-    'profile.create': 'Create profile',
-    'profile.name': 'Display name',
-    'profile.none': 'No profiles yet — create one',
-    'project.list': 'Projects',
     'project.create': 'New project',
     'project.name': 'Project name',
     'project.engine': 'Engine',
@@ -45,6 +36,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     'project.none': 'No projects yet — create one',
     'project.open': 'Open',
     'project.delete': 'Delete',
+    'workspace.backToProjects': 'Working directories',
     'fileTree.new': 'New file',
     'fileTree.rename': 'Rename',
     'fileTree.delete': 'Delete',

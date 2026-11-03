@@ -1,1 +1,72 @@
-/* You can add global styles to this file, and also import other style files */
+/* Self-hosted subsets only (latin) — matches the mockups' Google Fonts weights. */
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/stix-two-text/400.css';
+@import '@fontsource/stix-two-text/600.css';
+@import '@fontsource/stix-two-text/400-italic.css';
+
+/* Design tokens, carried over from the UI mockups (logowanie-ui / edytor-ui
+   styles.css :root) — see docs/currentwork/plan.md UI overhaul milestones. */
+:root {
+  --navy: #304c89;
+  --navy-d: #223868;
+  --ink: #14213d;
+  --blue: #648de5;
+  --pale: #9eb7e5;
+  --bg: #f2f5fb;
+  --panel: #ffffff;
+  --line: #d3ddf1;
+  --tint: #e9effb;
+  --tint2: #dae5f9;
+  --muted: #51607e;
+  --danger: #b3261e;
+  --danger-bg: #fce9e7;
+  --warn: #8f5200;
+  --warn-bg: #fff1d6;
+  --ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --serif: 'STIX Two Text', 'Times New Roman', serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 14px/1.4 var(--ui);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}

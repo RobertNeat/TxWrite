@@ -9,11 +9,6 @@ export const routes: Routes = [
       ),
   },
   {
-    path: 'profiles/:profileId/projects',
-    loadComponent: () =>
-      import('./features/projects/project-list.component.js').then((m) => m.ProjectListComponent),
-  },
-  {
     path: 'projects/:projectId',
     loadComponent: () =>
       import('./features/workspace/project-workspace.component.js').then(

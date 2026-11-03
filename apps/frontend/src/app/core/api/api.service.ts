@@ -50,6 +50,17 @@ export class ApiService {
     });
   }
 
+  updateProject(
+    id: string,
+    input: { name?: string; engine?: string; mainFile?: string },
+  ): Promise<Project> {
+    return request(`/api/projects/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  }
+
   deleteProject(id: string): Promise<void> {
     return request(`/api/projects/${id}`, { method: 'DELETE' });
   }
