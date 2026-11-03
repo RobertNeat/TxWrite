@@ -3,6 +3,38 @@
 Branch `feature/ui-overhaul`. Implementing the UI redesign from the two mockup
 projects (see `docs/contracts/milestones.md` for the full remaining sequence).
 
+## Done: line-number gutter markers (not from either mockup — user request)
+
+Click a line number in the gutter to toggle a temporary "I want to edit
+this line" visual marker, with a full-row hover highlight while
+composing. Session-scoped only (in-memory, cleared on refresh) and
+deliberately not a `.cm-content` selection/decoration, to stay cheap.
+
+- New `apps/frontend/src/app/features/editor/line-marks.ts`: a
+  `StateField<RangeSet<GutterMarker>>` + `gutterLineClass` for the
+  marked lines (maps through `tr.changes` so a mark follows its line
+  across edits — insert a line above it and it moves down) and a
+  second field for the hover highlight. Click/hover handled by a plain
+  `mousedown`/`mousemove`/`mouseleave` listener on `view.scrollDOM`
+  (not a CodeMirror event handler extension, since scrollDOM survives
+  `setState` across file switches) — `preventDefault()` on the
+  gutter mousedown keeps `.cm-content`'s selection untouched. A click
+  on a non-empty `.cm-foldGutter` cell folds instead of toggling a
+  mark.
+- Storage is behind a tiny `LineMarkStore` interface
+  (`loadMarks(key)`/`saveMarks(key, lines)`), implemented in-memory by
+  `InMemoryLineMarkStore` for now. `EditorComponent` saves the
+  outgoing file's marks (keyed `projectId:path`) before switching
+  files and reseeds the new file's marks after `setState` — so marks
+  survive a tab switch but not a page refresh, as requested. A future
+  milestone can swap in a backend-persisted `LineMarkStore` without
+  touching the CodeMirror wiring in `EditorComponent`.
+- Fixed during verification: moving the mouse from the gutter straight
+  onto `.cm-content` (rather than off the whole editor) never fired
+  `scrollDOM`'s `mouseleave`, so the last-hovered line stayed
+  highlighted. `onMouseMove` now explicitly clears the hover the
+  moment `event.target` is no longer inside `.cm-gutters`.
+
 ## Done: UI overhaul M5 — formatting toolbar
 
 Ported app.js's `.tools`/`act()`/`insertTpl()`/`insertRaw()` family

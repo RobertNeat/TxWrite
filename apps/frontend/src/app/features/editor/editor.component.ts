@@ -18,6 +18,14 @@ import {
   lineLevel,
   modeFor,
 } from '../toolbar/toolbar.model.js';
+import {
+  InMemoryLineMarkStore,
+  attachLineMarkHandlers,
+  getMarkedLines,
+  lineMarksExtension,
+  seedLineMarks,
+  type LineMarkStore,
+} from './line-marks.js';
 
 const SAVE_DEBOUNCE_MS = 800;
 
@@ -79,6 +87,11 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   private savePendingForPath: string | null = null;
   private viewReady: Promise<void> | null = null;
   private loadedPath: string | null = null;
+  private detachLineMarkHandlers: (() => void) | null = null;
+  // In-memory only (session-scoped line marks, cleared on refresh) — swap for a
+  // backend-backed LineMarkStore in a future milestone without touching the
+  // CodeMirror wiring in loadCurrentFile()/clear().
+  private readonly lineMarkStore: LineMarkStore = new InMemoryLineMarkStore();
 
   async ngAfterViewInit(): Promise<void> {
     this.viewReady = this.createView();
@@ -112,6 +125,11 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       extensions: [basicSetup, EditorState.readOnly.of(true)],
       parent: this.host.nativeElement,
     });
+    this.detachLineMarkHandlers = attachLineMarkHandlers(this.view);
+  }
+
+  private lineMarkKey(path: string): string {
+    return `${this.projectId()}:${path}`;
   }
 
   private async loadCurrentFile(): Promise<void> {
@@ -131,6 +149,9 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.saveTimeout = null;
       await this.save();
     }
+    if (this.loadedPath) {
+      this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
+    }
     const [{ EditorState }, languageExtension] = await Promise.all([
       import('@codemirror/state'),
       languageExtensionFor(path),
@@ -144,6 +165,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
         extensions: [
           basicSetup,
           languageExtension,
+          lineMarksExtension,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               this.scheduleSave(path);
@@ -156,6 +178,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
         ],
       }),
     );
+    seedLineMarks(this.view, this.lineMarkStore.loadMarks(this.lineMarkKey(path)));
     this.contentChanged.emit({ path, content });
     this.emitHeadingLevel(path);
   }
@@ -244,6 +267,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (!this.view || this.loadedPath === null) {
       return;
     }
+    this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
     this.loadedPath = null;
     const { EditorState } = await import('@codemirror/state');
     this.view.setState(
@@ -274,6 +298,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       clearTimeout(this.saveTimeout);
       void this.save();
     }
+    this.detachLineMarkHandlers?.();
     this.view?.destroy();
   }
 }
