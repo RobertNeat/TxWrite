@@ -1,0 +1,180 @@
+:host {
+  display: block;
+}
+
+.tree {
+  flex: 1 1 56%;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.tree.drop {
+  background: #eef3fd;
+  box-shadow: inset 0 0 0 2px var(--navy);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 6px 0 calc(6px + var(--d) * 16px);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13.5px;
+}
+
+.row:hover {
+  background: var(--tint);
+}
+
+.row.sel {
+  background: var(--tint2);
+}
+
+.row.dragging {
+  opacity: 0.45;
+}
+
+.row.drop {
+  background: #cfe0fb;
+  border: 1px dashed var(--navy);
+}
+
+.row > .ic {
+  color: var(--navy);
+  flex: none;
+}
+
+.tw {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--navy);
+}
+
+.nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--navy);
+  color: #fff;
+}
+
+.acts {
+  display: none;
+  gap: 2px;
+  flex: none;
+}
+
+.row:hover .acts,
+.row:focus-within .acts {
+  display: flex;
+}
+
+.acts button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.acts button:hover {
+  background: #fff;
+  color: var(--navy);
+}
+
+.edit-in {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 0 6px;
+  background: #fff;
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(100, 141, 229, 0.3);
+}
+
+.tg {
+  flex: none;
+  min-width: 30px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  display: inline-grid;
+  place-items: center;
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.tg-tex {
+  background: #dce6f9;
+  color: #243c70;
+}
+
+.tg-bib {
+  background: #e9e3f8;
+  color: #4a3a86;
+}
+
+.tg-sty {
+  background: #d6efea;
+  color: #0f5f54;
+}
+
+.tg-md {
+  background: #fbe7cf;
+  color: #82430a;
+}
+
+.tg-bin {
+  background: #e6e9f0;
+  color: #44506b;
+}
+
+/* The row-selected highlight (--tint2) is close in hue to the tag badges —
+   invert the tag to a white background on a selected row so it stays legible. */
+.row.sel .tg {
+  background: #fff;
+}
+
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tree-hint {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}

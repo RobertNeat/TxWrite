@@ -5,7 +5,6 @@ this list right before the commit that finishes it. See
 `docs/currentwork/plan.md` for the active milestone's detail and
 `CLAUDE.md` rule 8.
 
-- UI overhaul M3: editor screen file tree (mock "edytor-ui": resizable panels, tabs, full tree with root-less drop behavior, per-file kebab)
 - UI overhaul M4: document outline panel wired to the open file
 - UI overhaul M5: formatting toolbar (headings, bold/italic, link/ref/cite, math menu, symbols panel, table grid, list menu) inserting into CodeMirror
 - UI overhaul M6: PDF preview toolbar (page nav, zoom/fit, log panel toggle, SyncTeX-style double-click-to-source)

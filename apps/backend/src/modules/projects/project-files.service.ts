@@ -64,7 +64,7 @@ export class ProjectFilesService {
     if (!existsSync(path)) {
       throw new NotFoundException(`File not found: ${relativePath}`);
     }
-    rmSync(path, { force: true });
+    rmSync(path, { force: true, recursive: true });
   }
 
   moveFile(projectId: string, from: string, to: string): void {

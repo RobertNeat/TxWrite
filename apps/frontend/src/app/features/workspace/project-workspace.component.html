@@ -1,0 +1,187 @@
+<div id="project-workspace" class="app">
+  <header id="workspace-topbar" class="top">
+    <app-brand />
+    <span class="spacer"></span>
+    <div id="workspace-chip" class="chip" role="group" aria-label="Profil użytkownika">
+      <span class="av" aria-hidden="true">{{
+        (profile()?.displayName ?? '??').slice(0, 2).toUpperCase()
+      }}</span>
+      <b id="workspace-profile-name">{{ profile()?.displayName }}</b>
+      <button
+        id="workspace-chip-logout"
+        class="chip-x"
+        type="button"
+        title="Wyloguj"
+        [attr.aria-label]="'Wyloguj profil ' + (profile()?.displayName ?? '')"
+        (click)="logout()"
+      >
+        <svg class="ic" aria-hidden="true"><use href="#i-close" /></svg>
+      </button>
+    </div>
+  </header>
+
+  <div
+    id="workspace-main"
+    #mainGrid
+    class="main"
+    [style.grid-template-columns]="gridTemplateColumns()"
+  >
+    <aside id="file-tree-pane" class="side" aria-label="Pliki projektu">
+      <div class="side-h">
+        <button
+          id="wsBtn"
+          #wsBtn
+          class="ws-btn"
+          type="button"
+          aria-haspopup="listbox"
+          [attr.aria-expanded]="workspacePopoverOpen()"
+          aria-controls="wsPop"
+          title="Katalog roboczy"
+          (click)="$event.stopPropagation(); toggleWorkspacePopover()"
+        >
+          <svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg>
+          <span id="wsVal" class="val">{{ project()?.name }}</span>
+          <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+        </button>
+        <div class="ibtns">
+          <button
+            id="bFile"
+            class="ib"
+            type="button"
+            title="Nowy plik"
+            aria-label="Nowy plik"
+            (click)="newFile()"
+          >
+            <svg class="ic" aria-hidden="true"><use href="#i-file-plus" /></svg>
+          </button>
+          <button
+            id="bDir"
+            class="ib"
+            type="button"
+            title="Nowy katalog"
+            aria-label="Nowy katalog"
+            (click)="newDir()"
+          >
+            <svg class="ic" aria-hidden="true"><use href="#i-folder-plus" /></svg>
+          </button>
+        </div>
+      </div>
+
+      @if (workspacePopoverOpen()) {
+        <div id="wsPop" #wsPop class="pop ws-pop" (click)="$event.stopPropagation()">
+          <label class="srch">
+            <svg class="ic" aria-hidden="true"><use href="#i-search" /></svg>
+            <input
+              id="wsQ"
+              #wsQuery
+              type="text"
+              placeholder="Szukaj katalogu…"
+              autocomplete="off"
+              aria-label="Szukaj katalogu roboczego"
+              [(ngModel)]="workspaceQuery"
+              name="workspaceQuery"
+            />
+          </label>
+          <div id="wsList" class="ws-list" role="listbox" aria-label="Katalogi robocze">
+            @for (ws of filteredWorkspaces(); track ws.id) {
+              <button
+                [id]="'ws-opt-' + ws.id"
+                class="ws-opt"
+                type="button"
+                role="option"
+                [attr.aria-selected]="ws.id === projectId()"
+                (click)="switchWorkspace(ws)"
+              >
+                <svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg>
+                <span>{{ ws.name }}</span>
+                @if (ws.id === projectId()) {
+                  <svg class="ic" aria-hidden="true"><use href="#i-check" /></svg>
+                }
+              </button>
+            } @empty {
+              <div class="ws-empty">Brak katalogów pasujących do „{{ workspaceQuery }}”.</div>
+            }
+          </div>
+        </div>
+      }
+
+      <app-file-tree
+        #fileTree
+        [projectId]="projectId()"
+        [mainFile]="project()?.mainFile ?? ''"
+        (fileOpened)="openFile($event)"
+      />
+    </aside>
+
+    <div
+      id="rz1"
+      class="rz"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Zmień szerokość lewego panelu"
+      tabindex="0"
+      (pointerdown)="startResize(1, $event)"
+      (pointermove)="moveResize(1, $event)"
+      (pointerup)="endResize(1, $event)"
+      (keydown)="keyResize(1, $event)"
+    ></div>
+
+    <section id="editor-pane" class="ed" aria-label="Edytor">
+      <div id="tabs" class="tabs" role="tablist" aria-label="Otwarte pliki">
+        @for (path of openPaths(); track path) {
+          <div class="tab" [class.on]="path === activePath()" (auxclick)="closeTab(path, $event)">
+            <button
+              [id]="'tab-' + path"
+              class="tab-b"
+              type="button"
+              role="tab"
+              [attr.aria-selected]="path === activePath()"
+              (click)="activateTab(path)"
+            >
+              <span class="tg" [class]="'tg-' + tagFor(path).cls">{{ tagFor(path).label }}</span>
+              <span>{{ path }}</span>
+            </button>
+            <button
+              class="tab-x"
+              type="button"
+              [attr.aria-label]="'Zamknij ' + path"
+              (click)="closeTab(path, $event)"
+            >
+              <svg class="ic" aria-hidden="true"><use href="#i-close" /></svg>
+            </button>
+          </div>
+        }
+      </div>
+      <app-editor [projectId]="projectId()" [filePath]="activePath()" [jumpTarget]="jumpTarget()" />
+    </section>
+
+    <div
+      id="rz2"
+      class="rz"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Zmień szerokość edytora i podglądu"
+      tabindex="0"
+      (pointerdown)="startResize(2, $event)"
+      (pointermove)="moveResize(2, $event)"
+      (pointerup)="endResize(2, $event)"
+      (keydown)="keyResize(2, $event)"
+    ></div>
+
+    <aside id="compile-pdf-pane" class="pv" aria-label="Kompilacja i podgląd">
+      <app-compile-panel
+        [projectId]="projectId()"
+        [isMarkdownProject]="isMarkdownProject()"
+        (jumpToFile)="jumpToFile($event)"
+        (compiled)="onCompiled($event)"
+      />
+      <div id="pdf-preview-pane" class="pdf-preview-pane">
+        <app-pdf-preview [projectId]="projectId()" [refreshToken]="pdfRefreshToken()" />
+      </div>
+    </aside>
+  </div>
+
+  <footer id="workspace-status" class="status">
+    <app-status-bar id="workspace-status-bar" />
+  </footer>
+</div>

@@ -78,7 +78,7 @@ export class ApiService {
     return response.text();
   }
 
-  async writeFile(projectId: string, path: string, content: string): Promise<void> {
+  async writeFile(projectId: string, path: string, content: string | Blob): Promise<void> {
     const response = await fetch(`/api/projects/${projectId}/files/${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/octet-stream' },

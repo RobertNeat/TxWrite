@@ -1,0 +1,114 @@
+<div
+  id="file-tree"
+  class="tree"
+  [class.drop]="dropTargetPath() === ''"
+  role="tree"
+  aria-label="Pliki projektu"
+  (click)="selectBackground()"
+  (dragover)="handleDragOver(null, $event)"
+  (drop)="handleDrop(null, $event)"
+>
+  @for (row of rows(); track isNewEntryRow(row) ? 'new-' + row.newEntryParentPath : row.node.path) {
+    @if (isNewEntryRow(row)) {
+      <div class="row" [style.--d]="row.depth">
+        <span class="tw"></span>
+        @if (newEntryIsDir()) {
+          <svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg>
+        } @else {
+          <span class="tg tg-tex">NOWY</span>
+        }
+        <input
+          id="file-tree-new-entry-input"
+          #editInput
+          class="edit-in"
+          type="text"
+          [placeholder]="newEntryIsDir() ? 'nazwa-katalogu' : 'nazwa-pliku.tex'"
+          [attr.aria-label]="newEntryIsDir() ? 'Nazwa nowego katalogu' : 'Nazwa nowego pliku'"
+          [(ngModel)]="editValue"
+          name="editValue"
+          (click)="$event.stopPropagation()"
+          (keydown.enter)="commitEdit()"
+          (keydown.escape)="cancelEdit()"
+          (blur)="commitEdit()"
+        />
+      </div>
+    } @else {
+      <div
+        [id]="'file-tree-item-' + row.node.path"
+        class="row"
+        [class.sel]="row.node.path === selectedPath()"
+        [class.dragging]="row.node.path === dragPath()"
+        [class.drop]="row.node.isDirectory && row.node.path === dropTargetPath()"
+        role="treeitem"
+        tabindex="0"
+        [draggable]="!isRenaming(row.node.path)"
+        [style.--d]="row.depth"
+        [attr.aria-expanded]="row.node.isDirectory ? openDirs().has(row.node.path) : null"
+        [attr.aria-selected]="row.node.path === selectedPath()"
+        (click)="$event.stopPropagation(); selectNode(row.node)"
+        (dragstart)="handleDragStart(row.node, $event)"
+        (dragend)="handleDragEnd()"
+        (dragover)="$event.stopPropagation(); handleDragOver(row.node, $event)"
+        (drop)="$event.stopPropagation(); handleDrop(row.node, $event)"
+      >
+        <span class="tw">
+          @if (row.node.isDirectory) {
+            <svg class="ic" aria-hidden="true">
+              <use [attr.href]="openDirs().has(row.node.path) ? '#i-chev-d' : '#i-chev-r'" />
+            </svg>
+          }
+        </span>
+        @if (row.node.isDirectory) {
+          <svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg>
+        } @else {
+          <span class="tg" [class]="'tg-' + tagFor(row.node.name).cls">{{
+            tagFor(row.node.name).label
+          }}</span>
+        }
+        @if (isRenaming(row.node.path)) {
+          <input
+            [id]="'file-tree-rename-input-' + row.node.path"
+            #editInput
+            class="edit-in"
+            type="text"
+            aria-label="Nowa nazwa"
+            [(ngModel)]="editValue"
+            name="renameValue"
+            (click)="$event.stopPropagation()"
+            (keydown.enter)="commitEdit()"
+            (keydown.escape)="cancelEdit()"
+            (blur)="commitEdit()"
+          />
+        } @else {
+          <span class="nm">{{ row.node.name }}</span>
+        }
+        @if (isMainFile(row.node.path)) {
+          <span class="pill">główny</span>
+        }
+        <span class="acts">
+          <button
+            [id]="'file-tree-rename-' + row.node.path"
+            type="button"
+            [attr.aria-label]="'Zmień nazwę: ' + row.node.name"
+            title="Zmień nazwę"
+            (click)="$event.stopPropagation(); startRename(row.node)"
+          >
+            <svg class="ic" aria-hidden="true"><use href="#i-pencil" /></svg>
+          </button>
+          @if (!isMainFile(row.node.path)) {
+            <button
+              [id]="'file-tree-delete-' + row.node.path"
+              type="button"
+              [attr.aria-label]="'Usuń: ' + row.node.name"
+              title="Usuń"
+              (click)="$event.stopPropagation(); deleteNode(row.node)"
+            >
+              <svg class="ic" aria-hidden="true"><use href="#i-trash" /></svg>
+            </button>
+          }
+        </span>
+      </div>
+    }
+  }
+</div>
+<div class="tree-hint">Przeciągnij pliki, aby je przenieść. Upuść pliki z dysku, aby wgrać.</div>

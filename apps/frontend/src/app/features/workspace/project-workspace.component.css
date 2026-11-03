@@ -1,0 +1,416 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr) 28px;
+  height: 100%;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--navy);
+  color: #fff;
+}
+
+.top ::ng-deep .brand small {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 5px;
+  border-radius: 20px;
+  background: var(--pale);
+  color: var(--ink);
+}
+
+.chip .av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--navy);
+  color: #fff;
+  font: 600 12px var(--ui);
+}
+
+.chip b {
+  font-weight: 600;
+  font-size: 13.5px;
+  padding-right: 2px;
+}
+
+.chip-x {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+}
+
+.chip-x:hover {
+  background: rgba(48, 76, 137, 0.2);
+}
+
+.main {
+  display: grid;
+  min-height: 0;
+  min-width: 1280px;
+}
+
+.rz {
+  background: var(--line);
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+  touch-action: none;
+}
+
+.rz:hover,
+.rz:focus-visible {
+  background: var(--blue);
+}
+
+.ibtns {
+  display: flex;
+  gap: 0;
+  flex: none;
+}
+
+.ib {
+  width: 28px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--navy);
+}
+
+.ib:hover:not(:disabled) {
+  background: var(--tint2);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
+  border-right: 1px solid var(--line);
+  position: relative;
+}
+
+.side-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  flex: none;
+}
+
+.ws-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+}
+
+.ws-btn:hover {
+  background: var(--tint);
+}
+
+.ws-btn[aria-expanded='true'] {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(100, 141, 229, 0.25);
+}
+
+.ws-btn .ic {
+  color: var(--navy);
+}
+
+.ws-btn .val {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pop {
+  position: fixed;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(19, 33, 63, 0.28);
+  overflow: hidden;
+  z-index: 70;
+}
+
+.ws-pop {
+  width: 284px;
+}
+
+.srch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 42px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.srch input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  height: 38px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.srch:focus-within {
+  box-shadow: inset 0 -2px 0 var(--blue);
+}
+
+.ws-list {
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+}
+
+.ws-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 7px;
+}
+
+.ws-opt:hover,
+.ws-opt:focus-visible {
+  background: var(--tint);
+}
+
+.ws-opt[aria-selected='true'] {
+  background: var(--tint2);
+  font-weight: 600;
+}
+
+.ws-opt .ic {
+  color: var(--navy);
+}
+
+.ws-opt span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.side ::ng-deep app-file-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ic.sm {
+  width: 12px;
+  height: 12px;
+}
+
+.ed {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.ed ::ng-deep app-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.tabs {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: #e4ebf8;
+  flex: none;
+}
+
+.tab.on {
+  background: #fff;
+  border-color: var(--line);
+  height: 35px;
+  margin-bottom: -1px;
+}
+
+.tab-b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: none;
+  font-size: 13.5px;
+}
+
+.tab.on .tab-b {
+  font-weight: 600;
+}
+
+.tab-x {
+  width: 24px;
+  height: 24px;
+  margin-right: 5px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tab-x:hover {
+  background: var(--tint2);
+  color: var(--ink);
+}
+
+.tg {
+  flex: none;
+  min-width: 30px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  display: inline-grid;
+  place-items: center;
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.tg-tex {
+  background: #dce6f9;
+  color: #243c70;
+}
+
+.tg-bib {
+  background: #e9e3f8;
+  color: #4a3a86;
+}
+
+.tg-sty {
+  background: #d6efea;
+  color: #0f5f54;
+}
+
+.tg-md {
+  background: #fbe7cf;
+  color: #82430a;
+}
+
+.tg-bin {
+  background: #e6e9f0;
+  color: #44506b;
+}
+
+.pv {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0.5rem;
+}
+
+.pdf-preview-pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}

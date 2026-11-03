@@ -68,8 +68,17 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   async ngOnChanges(changes: SimpleChanges): Promise<void> {
-    if (!this.viewReady || !(changes['filePath'] || changes['jumpTarget'])) {
+    if (
+      !this.viewReady ||
+      !(changes['filePath'] || changes['jumpTarget'] || changes['projectId'])
+    ) {
       return;
+    }
+    if (changes['projectId'] && !changes['projectId'].firstChange) {
+      // A different project can have a file at the same path (e.g. both main.tex)
+      // — loadCurrentFile() short-circuits on an unchanged path, so without this
+      // reset it would keep showing the previous project's content.
+      this.loadedPath = null;
     }
     await this.viewReady;
     await this.loadCurrentFile();
