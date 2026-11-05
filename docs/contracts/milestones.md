@@ -5,7 +5,6 @@ this list right before the commit that finishes it. See
 `docs/currentwork/plan.md` for the active milestone's detail and
 `CLAUDE.md` rule 8.
 
-- Backend: empty directory creation endpoint (mockup item `#bDir`)
 - Backend: profile delete endpoint (mockup's profile "x"/environment delete)
 - Backend: ZIP export endpoint (project or single working-directory download)
 - Backend: ZIP import endpoint (create working directory from an uploaded ZIP)

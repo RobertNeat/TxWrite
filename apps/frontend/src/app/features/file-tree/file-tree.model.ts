@@ -66,9 +66,10 @@ export function buildTree(entries: ProjectFileEntry[]): TreeNode {
   }
   for (const entry of entries) {
     if (entry.isDirectory || entry.path.endsWith('/.gitkeep')) {
-      // .gitkeep is a local placeholder for an otherwise-empty directory
-      // (no empty-dir endpoint — see docs/contracts/milestones.md), kept on
-      // disk but hidden from the tree so empty dirs look genuinely empty.
+      // New empty directories use POST /dirs (no placeholder file needed),
+      // but projects created before that endpoint existed may still have a
+      // leftover .gitkeep marking an otherwise-empty directory — keep hiding
+      // it so those old empty dirs still look genuinely empty.
       continue;
     }
     const parentPath = entry.path.split('/').slice(0, -1).join('/');

@@ -115,6 +115,14 @@ export class ApiService {
     });
   }
 
+  createDir(projectId: string, path: string): Promise<{ path: string }> {
+    return request(`/api/projects/${projectId}/dirs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+  }
+
   // Compile
   compile(projectId: string, targetFile?: string): Promise<CompileResult> {
     const query = targetFile ? `?file=${encodeURIComponent(targetFile)}` : '';

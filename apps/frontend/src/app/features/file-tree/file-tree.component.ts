@@ -188,6 +188,11 @@ export class FileTreeComponent implements OnChanges {
     });
   }
 
+  private hasSibling(parentPath: string, name: string): boolean {
+    const parent = findNode(this.tree(), parentPath);
+    return (parent?.children ?? []).some((c) => c.name.toLowerCase() === name.toLowerCase());
+  }
+
   async commitEdit(): Promise<void> {
     const mode = this.edit();
     const value = this.editValue.trim();
@@ -220,9 +225,10 @@ export class FileTreeComponent implements OnChanges {
 
     const path = mode.parentPath ? `${mode.parentPath}/${value}` : value;
     if (mode.kind === 'new-dir') {
-      // No empty-directory endpoint yet (see docs/contracts/milestones.md) —
-      // create a placeholder file so the directory exists, then open it.
-      await this.api.writeFile(this.projectId(), `${path}/.gitkeep`, '');
+      if (this.hasSibling(mode.parentPath, value)) {
+        return;
+      }
+      await this.api.createDir(this.projectId(), path);
       this.openDirs.update((set) => new Set(set).add(path));
     } else {
       const filePath = value.includes('.') ? path : `${path}.tex`;

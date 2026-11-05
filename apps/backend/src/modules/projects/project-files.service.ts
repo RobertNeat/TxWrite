@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   mkdirSync,
@@ -57,6 +61,14 @@ export class ProjectFilesService {
     const path = resolveSafePath(this.projectDir(projectId), relativePath);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
+  }
+
+  createDir(projectId: string, relativePath: string): void {
+    const path = resolveSafePath(this.projectDir(projectId), relativePath);
+    if (existsSync(path)) {
+      throw new ConflictException(`Already exists: ${relativePath}`);
+    }
+    mkdirSync(path, { recursive: true });
   }
 
   deleteFile(projectId: string, relativePath: string): void {

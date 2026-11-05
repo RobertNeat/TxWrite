@@ -35,12 +35,14 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
 - `POST /api/projects/:id/files/move` — body `{ from: string, to: string }`,
   used for both rename and move. Both paths are confinement-checked. Consumed
   by the file tree's rename action (`window.prompt`-based, no modal yet).
+- `POST /api/projects/:id/dirs` — body `{ path: string }`, creates an empty
+  directory (including intermediate parents). 409 if anything already exists
+  at that path. Confinement-checked. Consumed by the file tree's "Nowy
+  katalog" action.
 
 File creation has no dedicated endpoint:
 the frontend creates a new file by `PUT`-ing empty content to a new path, which
-the backend already supports (`writeFile` creates parent dirs + the file). There
-is no way to create an empty directory with no files in it from the UI; not
-needed yet since `PUT files/*` auto-creates parent directories for any path.
+the backend already supports (`writeFile` creates parent dirs + the file).
 
 ## Compile endpoints
 

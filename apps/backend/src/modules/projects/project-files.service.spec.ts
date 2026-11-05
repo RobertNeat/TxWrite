@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -71,6 +71,41 @@ describe('ProjectFilesService', () => {
 
   it('rejects an invalid project id', () => {
     expect(() => service.projectDir('not-a-uuid')).toThrow();
+  });
+
+  describe('createDir', () => {
+    it('creates an empty directory that listFiles reports', () => {
+      service.createDir(projectId, 'images');
+      expect(service.listFiles(projectId)).toEqual([
+        { path: 'images', size: 0, isDirectory: true },
+      ]);
+    });
+
+    it('creates intermediate directories', () => {
+      service.createDir(projectId, 'a/b/c');
+      const paths = service.listFiles(projectId).map((e) => e.path);
+      expect(paths).toEqual(['a', 'a/b', 'a/b/c']);
+    });
+
+    it('throws ConflictException if the directory already exists', () => {
+      service.createDir(projectId, 'images');
+      expect(() => service.createDir(projectId, 'images')).toThrow(
+        ConflictException,
+      );
+    });
+
+    it('throws ConflictException if a file already exists at that path', () => {
+      service.writeFile(projectId, 'images', Buffer.from('x'));
+      expect(() => service.createDir(projectId, 'images')).toThrow(
+        ConflictException,
+      );
+    });
+
+    it('rejects path traversal', () => {
+      expect(() => service.createDir(projectId, '../escape')).toThrow(
+        UnsafePathError,
+      );
+    });
   });
 
   describe('listFiles', () => {

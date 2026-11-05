@@ -37,6 +37,10 @@ interface MoveFileDto {
   to?: string;
 }
 
+interface CreateDirDto {
+  path?: string;
+}
+
 const MIME_TYPES: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -116,6 +120,20 @@ export class ProjectsController {
     }
     this.wrapUnsafePath(() => this.projectFiles.moveFile(id, from, to));
     return { from, to };
+  }
+
+  @Post(':id/dirs')
+  createDir(
+    @Param('id') id: string,
+    @Body() dto: CreateDirDto,
+  ): { path: string } {
+    this.projectsService.findByIdOrThrow(id);
+    const path = dto.path?.trim();
+    if (!path) {
+      throw new BadRequestException('path is required');
+    }
+    this.wrapUnsafePath(() => this.projectFiles.createDir(id, path));
+    return { path };
   }
 
   @Get(':id/files/*')

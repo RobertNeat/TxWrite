@@ -4,10 +4,10 @@ Branch `feature/ui-overhaul`. UI overhaul milestones M1–M7 are complete (see
 git history for details). See `docs/contracts/milestones.md` for the
 remaining milestone sequence.
 
-No work actively in progress — binary-file preview (image files render inline
-cover-scaled in the editor pane; other binaries show a copyable/openable raw
-file link, replacing the old nonsensical `\includegraphics` command) is
-implemented and verified live, pending commit.
+No work actively in progress — empty-directory creation (`POST
+/api/projects/:id/dirs`, used by the file tree's "Nowy katalog" action
+instead of the old `.gitkeep`-placeholder workaround) is implemented and
+verified live, pending commit.
 
 Known limitation, not yet addressed: two files with the same basename in
 different directories (e.g. `a/main.tex` and `b/main.tex`), or `main.tex`
