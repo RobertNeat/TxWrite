@@ -76,6 +76,11 @@ export class ApiService {
     return request(`/api/projects/${projectId}/files`);
   }
 
+  /** Absolute, pasteable raw-file URL (GitHub-raw-link style) — the browser opens/downloads the actual resource directly. */
+  fileUrl(projectId: string, path: string): string {
+    return new URL(`/api/projects/${projectId}/files/${path}`, window.location.origin).toString();
+  }
+
   async readFile(projectId: string, path: string): Promise<string> {
     const response = await fetch(`/api/projects/${projectId}/files/${path}`);
     if (!response.ok) {

@@ -4,9 +4,10 @@ Branch `feature/ui-overhaul`. UI overhaul milestones M1–M7 are complete (see
 git history for details). See `docs/contracts/milestones.md` for the
 remaining milestone sequence.
 
-No work actively in progress — symbols panel height fix (fixed 3-row height
-instead of resizing per category tab) is implemented and verified live,
-pending user review/commit.
+No work actively in progress — binary-file preview (image files render inline
+cover-scaled in the editor pane; other binaries show a copyable/openable raw
+file link, replacing the old nonsensical `\includegraphics` command) is
+implemented and verified live, pending commit.
 
 Known limitation, not yet addressed: two files with the same basename in
 different directories (e.g. `a/main.tex` and `b/main.tex`), or `main.tex`

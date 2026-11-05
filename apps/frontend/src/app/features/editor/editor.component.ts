@@ -9,10 +9,12 @@ import {
   inject,
   input,
   output,
+  signal,
 } from '@angular/core';
 import type { Extension } from '@codemirror/state';
 import type { KeyBinding } from '@codemirror/view';
 import { ApiService } from '../../core/api/api.service.js';
+import { isImageFile, isTextFile } from '../file-tree/file-tree.model.js';
 import {
   TEMPLATES,
   insertTemplate,
@@ -53,10 +55,51 @@ function languageExtensionFor(path: string): Promise<Extension> {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  template: `<div id="editor-host" #host class="editor-host"></div>`,
+  template: `
+    <div id="editor-host" #host class="editor-host"></div>
+    @if (binaryPath()) {
+      @if (isImage()) {
+        <img
+          id="editor-bin-image"
+          class="editor-bin-image"
+          [src]="binaryUrl()"
+          [alt]="binaryName()"
+        />
+      } @else {
+        <div id="editor-bin" class="editor-bin">
+          <div id="editor-bin-card" class="editor-bin-card">
+            <h3 id="editor-bin-name">{{ binaryName() }}</h3>
+            <p id="editor-bin-note">
+              Plik binarny. Podgląd nie jest dostępny w edytorze tekstu. Kliknij link, aby skopiować
+              go do schowka, lub otwórz plik w nowej karcie.
+            </p>
+            <code id="editor-bin-cmd" (click)="onLinkClick()">{{ binaryUrl() }}</code>
+            <a
+              id="editor-bin-open"
+              class="editor-bin-open"
+              [href]="binaryUrl()"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Otwórz w nowej karcie</a
+            >
+          </div>
+        </div>
+      }
+      @if (toastMessage()) {
+        <div id="editor-bin-toast" class="editor-bin-toast">{{ toastMessage() }}</div>
+      }
+    }
+  `,
   styles: [
     `
-      :host,
+      :host {
+        display: block;
+        position: relative;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+      }
+
       .editor-host {
         display: block;
         height: 100%;
@@ -70,6 +113,82 @@ function languageExtensionFor(path: string): Promise<Extension> {
 
       .editor-host ::ng-deep .cm-scroller {
         overflow: auto;
+      }
+
+      .editor-bin-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: var(--bg, #f4f5f7);
+      }
+
+      .editor-bin {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: var(--bg, #f4f5f7);
+      }
+
+      .editor-bin-card {
+        width: 420px;
+        background: #fff;
+        border: 1px solid var(--line, #d9dce2);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+      }
+
+      .editor-bin-card h3 {
+        margin: 10px 0 4px;
+        font-size: 16px;
+      }
+
+      .editor-bin-card p {
+        margin: 0 0 14px;
+        color: var(--muted, #6b7280);
+      }
+
+      .editor-bin-card code {
+        display: block;
+        font: 13px var(--mono, ui-monospace, monospace);
+        background: var(--tint, #f0f1f4);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 14px;
+        overflow: auto;
+        text-align: left;
+        white-space: pre;
+        cursor: pointer;
+        user-select: text;
+      }
+
+      .editor-bin-open {
+        display: inline-block;
+        font: 500 13px var(--ui, inherit);
+        color: var(--navy, #1f2937);
+        text-decoration: none;
+        border: 1px solid var(--line, #d9dce2);
+        border-radius: 6px;
+        padding: 8px 14px;
+      }
+
+      .editor-bin-open:hover {
+        background: var(--tint, #f0f1f4);
+      }
+
+      .editor-bin-toast {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1f2430;
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
       }
     `,
   ],
@@ -97,6 +216,16 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   // backend-backed LineMarkStore in a future milestone without touching the
   // CodeMirror wiring in loadCurrentFile()/clear().
   private readonly lineMarkStore: LineMarkStore = new InMemoryLineMarkStore();
+
+  protected readonly binaryPath = signal<string | null>(null);
+  protected readonly binaryName = () => this.binaryPath()?.split('/').pop() ?? '';
+  protected readonly isImage = () => isImageFile(this.binaryPath() ?? '');
+  protected readonly binaryUrl = () => {
+    const path = this.binaryPath();
+    return path ? this.api.fileUrl(this.projectId(), path) : '';
+  };
+  protected readonly toastMessage = signal('');
+  private toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
   async ngAfterViewInit(): Promise<void> {
     this.viewReady = this.createView();
@@ -194,7 +323,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
       await this.clear();
       return;
     }
-    if (path === this.loadedPath) {
+    if (path === this.loadedPath || path === this.binaryPath()) {
       return;
     }
     if (this.saveTimeout) {
@@ -205,6 +334,10 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     if (this.loadedPath) {
       this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
     }
+    if (!isTextFile(path)) {
+      await this.showBinaryFile(path);
+      return;
+    }
     const [{ EditorState }, languageExtension, editorKeymap] = await Promise.all([
       import('@codemirror/state'),
       languageExtensionFor(path),
@@ -212,6 +345,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     ]);
     const content = await this.api.readFile(this.projectId(), path);
     this.loadedPath = path;
+    this.binaryPath.set(null);
     const { EditorView, basicSetup } = await import('codemirror');
     this.view.setState(
       EditorState.create({
@@ -237,6 +371,45 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     seedLineMarks(this.view, this.lineMarkStore.loadMarks(this.lineMarkKey(path)));
     this.contentChanged.emit({ path, content });
     this.emitHeadingLevel(path);
+  }
+
+  /** Binary files never go through CodeMirror: no readFile (lossy as text) and no autosave. */
+  private async showBinaryFile(path: string): Promise<void> {
+    this.loadedPath = null;
+    this.binaryPath.set(path);
+    const { EditorState } = await import('@codemirror/state');
+    this.view!.setState(
+      EditorState.create({ doc: '', extensions: [EditorState.readOnly.of(true)] }),
+    );
+    this.contentChanged.emit({ path, content: '' });
+  }
+
+  /** A plain click copies the link; a drag-to-select leaves the selection alone (the click event fires after mouseup, so the selection is already visible here). */
+  onLinkClick(): void {
+    if (!(window.getSelection()?.isCollapsed ?? true)) {
+      return;
+    }
+    this.copyBinaryLink();
+  }
+
+  private copyBinaryLink(): void {
+    const text = this.binaryUrl();
+    try {
+      navigator.clipboard.writeText(text).then(
+        () => this.showToast('Skopiowano link'),
+        () => this.showToast('Nie udało się skopiować. Zaznacz tekst ręcznie.'),
+      );
+    } catch {
+      this.showToast('Nie udało się skopiować. Zaznacz tekst ręcznie.');
+    }
+  }
+
+  private showToast(message: string): void {
+    this.toastMessage.set(message);
+    if (this.toastTimeout) {
+      clearTimeout(this.toastTimeout);
+    }
+    this.toastTimeout = setTimeout(() => this.toastMessage.set(''), 3200);
   }
 
   private emitHeadingLevel(path: string): void {
@@ -330,11 +503,14 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   private async clear(): Promise<void> {
-    if (!this.view || this.loadedPath === null) {
+    if (!this.view || (this.loadedPath === null && this.binaryPath() === null)) {
       return;
     }
-    this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
+    if (this.loadedPath) {
+      this.lineMarkStore.saveMarks(this.lineMarkKey(this.loadedPath), getMarkedLines(this.view));
+    }
     this.loadedPath = null;
+    this.binaryPath.set(null);
     const { EditorState } = await import('@codemirror/state');
     this.view.setState(
       EditorState.create({ doc: '', extensions: [EditorState.readOnly.of(true)] }),

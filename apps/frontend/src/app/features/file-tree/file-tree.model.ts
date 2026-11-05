@@ -38,6 +38,11 @@ export function isTextFile(path: string): boolean {
   return /\.(tex|sty|cls|bib|bst|md|txt)$/i.test(path);
 }
 
+/** Whether the editor pane should render this file as an inline image instead of the raw-link fallback card. */
+export function isImageFile(path: string): boolean {
+  return /\.(png|jpe?g|svg)$/i.test(path);
+}
+
 /** Builds a nested tree from the backend's flat `{path, isDirectory}[]` listing, root excluded (app.js's root-less tree). */
 export function buildTree(entries: ProjectFileEntry[]): TreeNode {
   const root: TreeNode = { path: '', name: '', isDirectory: true, children: [] };

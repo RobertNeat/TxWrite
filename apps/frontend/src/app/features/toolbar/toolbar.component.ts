@@ -6,6 +6,7 @@ import {
   ViewChild,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -119,6 +120,16 @@ export class ToolbarComponent {
     row: Math.floor(i / 10) + 1,
     col: (i % 10) + 1,
   }));
+
+  constructor() {
+    // Mirrors the mockup: switching to a binary file (enabled() turns false)
+    // closes the symbols panel instead of leaving it open over a disabled toggle.
+    effect(() => {
+      if (!this.enabled() && this.symbolsOpen()) {
+        this.closeSymbols();
+      }
+    });
+  }
 
   // ---------- menu open/close ----------
 

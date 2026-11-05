@@ -37,6 +37,20 @@ interface MoveFileDto {
   to?: string;
 }
 
+const MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+};
+
+/** Browsers need a real image/pdf Content-Type to render inline (<img>, a pasted raw-file URL in a new tab) instead of downloading — the fallback keeps everything else as a generic download. */
+export function mimeTypeFor(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  return MIME_TYPES[ext] ?? 'application/octet-stream';
+}
+
 @Controller('projects')
 export class ProjectsController {
   constructor(
@@ -105,12 +119,17 @@ export class ProjectsController {
   }
 
   @Get(':id/files/*')
-  getFile(@Param('id') id: string, @Req() request: FastifyRequest): Buffer {
+  getFile(
+    @Param('id') id: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): void {
     this.projectsService.findByIdOrThrow(id);
     const relativePath = this.extractFilePath(request.url, id);
-    return this.wrapUnsafePath(() =>
+    const content = this.wrapUnsafePath(() =>
       this.projectFiles.readFile(id, relativePath),
     );
+    reply.header('Content-Type', mimeTypeFor(relativePath)).send(content);
   }
 
   @Put(':id/files/*')
