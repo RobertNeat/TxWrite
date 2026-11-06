@@ -60,6 +60,15 @@ export class ApiService {
     });
   }
 
+  importProjectZip(name: string, ownerProfileId: string, file: Blob): Promise<Project> {
+    const params = new URLSearchParams({ name, ownerProfileId });
+    return request(`/api/projects/import?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+  }
+
   updateProject(
     id: string,
     input: { name?: string; engine?: string; mainFile?: string },

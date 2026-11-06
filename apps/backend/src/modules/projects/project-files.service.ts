@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -14,11 +15,20 @@ import {
   statSync,
   readdirSync,
   realpathSync,
+  createWriteStream,
 } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { ZipArchive } from 'archiver';
-import { resolveSafePath } from '../../common/files/safe-path.js';
+import { fromBufferPromise } from 'yauzl';
+import {
+  resolveSafePath,
+  UnsafePathError,
+} from '../../common/files/safe-path.js';
 import { isValidUuid } from '../../common/ids.js';
+
+const IMPORT_MAX_ENTRIES = 2000;
+const IMPORT_MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 
 export interface ProjectFileEntry {
   path: string;
@@ -110,6 +120,77 @@ export class ProjectFilesService {
     }
     void archive.finalize();
     return archive;
+  }
+
+  /**
+   * Unpacks a ZIP buffer into an already-created, empty project directory.
+   * Validates every entry (count, total size, path confinement) before
+   * writing anything, so a rejected import never leaves a partial project
+   * on disk. Entries are written as plain files/directories regardless of
+   * their declared type — a "symlink" entry becomes an inert text file
+   * rather than a real symlink, so an imported zip can never plant one that
+   * later escapes the project root (see listFiles()'s symlink check).
+   */
+  async importArchive(projectId: string, zipBuffer: Buffer): Promise<void> {
+    const projectDir = this.projectDir(projectId);
+
+    let validation: { name: string; uncompressedSize: number }[];
+    try {
+      const probe = await fromBufferPromise(zipBuffer);
+      validation = await this.readEntries(probe);
+    } catch {
+      throw new BadRequestException('Not a valid ZIP file');
+    }
+
+    if (validation.length > IMPORT_MAX_ENTRIES) {
+      throw new BadRequestException(
+        `ZIP has too many entries (max ${IMPORT_MAX_ENTRIES})`,
+      );
+    }
+    const totalBytes = validation.reduce(
+      (sum, e) => sum + e.uncompressedSize,
+      0,
+    );
+    if (totalBytes > IMPORT_MAX_TOTAL_BYTES) {
+      throw new BadRequestException(
+        `ZIP is too large uncompressed (max ${IMPORT_MAX_TOTAL_BYTES} bytes)`,
+      );
+    }
+    for (const entry of validation) {
+      try {
+        resolveSafePath(projectDir, entry.name);
+      } catch (error) {
+        if (error instanceof UnsafePathError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+    }
+
+    const zip = await fromBufferPromise(zipBuffer);
+    for await (const entry of zip.eachEntry()) {
+      const path = resolveSafePath(projectDir, entry.fileName);
+      if (entry.fileName.endsWith('/')) {
+        mkdirSync(path, { recursive: true });
+        continue;
+      }
+      mkdirSync(dirname(path), { recursive: true });
+      const readStream = await zip.openReadStreamPromise(entry);
+      await pipeline(readStream, createWriteStream(path));
+    }
+  }
+
+  private async readEntries(
+    zip: Awaited<ReturnType<typeof fromBufferPromise>>,
+  ): Promise<{ name: string; uncompressedSize: number }[]> {
+    const entries: { name: string; uncompressedSize: number }[] = [];
+    for await (const entry of zip.eachEntry()) {
+      entries.push({
+        name: entry.fileName,
+        uncompressedSize: entry.uncompressedSize,
+      });
+    }
+    return entries;
   }
 
   /**

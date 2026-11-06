@@ -1,10 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { ZipArchive } from 'archiver';
 import { fromBufferPromise } from 'yauzl';
 import { UnsafePathError } from '../../common/files/safe-path.js';
 import { ProjectFilesService } from './project-files.service.js';
@@ -194,6 +199,135 @@ describe('ProjectFilesService', () => {
 
       expect(names).toEqual(['main.tex']);
       rmSync(outsideDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('importArchive', () => {
+    async function bufferFromArchive(
+      archive: NodeJS.ReadableStream,
+    ): Promise<Buffer> {
+      const chunks: Buffer[] = [];
+      for await (const chunk of archive) {
+        chunks.push(chunk as Buffer);
+      }
+      return Buffer.concat(chunks);
+    }
+
+    /**
+     * archiver strips leading "/" and ".." segments from entry names, so a
+     * zip-slip archive can't be built through the normal append() API.
+     * Byte-patches a same-length placeholder name to a traversal path in
+     * the produced zip instead — the CRC covers the entry data, not the
+     * name, so the archive stays valid.
+     */
+    function patchEntryName(buf: Buffer, from: string, to: string): Buffer {
+      if (from.length !== to.length) {
+        throw new Error('patchEntryName requires same-length strings');
+      }
+      const patched = Buffer.from(buf);
+      const needle = Buffer.from(from);
+      const replacement = Buffer.from(to);
+      let index = 0;
+      let found = 0;
+      while ((index = patched.indexOf(needle, index)) !== -1) {
+        replacement.copy(patched, index);
+        index += needle.length;
+        found++;
+      }
+      if (found === 0) {
+        throw new Error(`placeholder name not found in archive: ${from}`);
+      }
+      return patched;
+    }
+
+    it('round-trips an export into a new project, including an empty directory and a Polish filename', async () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('hello'));
+      service.writeFile(
+        projectId,
+        'rozdziały/rozdział.tex',
+        Buffer.from('\\chapter{Wstep}'),
+      );
+      service.createDir(projectId, 'empty');
+      const zipBuffer = await bufferFromArchive(
+        service.createArchive(projectId),
+      );
+
+      const importedId = randomUUID();
+      service.createProjectDir(importedId);
+      await service.importArchive(importedId, zipBuffer);
+
+      const entries = service.listFiles(importedId);
+      const byPath = Object.fromEntries(entries.map((e) => [e.path, e]));
+      expect(byPath['main.tex']).toMatchObject({ isDirectory: false });
+      expect(byPath['rozdziały/rozdział.tex']).toMatchObject({
+        isDirectory: false,
+      });
+      expect(byPath['empty']).toMatchObject({ isDirectory: true });
+      expect(
+        service.readFile(importedId, 'rozdziały/rozdział.tex').toString(),
+      ).toBe('\\chapter{Wstep}');
+    });
+
+    it('rejects a traversal entry name and writes nothing outside the project', async () => {
+      const a = new ZipArchive();
+      a.append(Buffer.from('pwn'), { name: 'xx/evil.txt' });
+      void a.finalize();
+      const clean = await bufferFromArchive(a);
+      const malicious = patchEntryName(clean, 'xx/evil.txt', '../evil.txt');
+
+      const importedId = randomUUID();
+      service.createProjectDir(importedId);
+
+      await expect(
+        service.importArchive(importedId, malicious),
+      ).rejects.toThrow(BadRequestException);
+      expect(service.listFiles(importedId)).toEqual([]);
+
+      const outsidePath = join(
+        dirname(service.projectDir(importedId)),
+        'evil.txt',
+      );
+      expect(existsSync(outsidePath)).toBe(false);
+    });
+
+    it('rejects an absolute entry path', async () => {
+      const a = new ZipArchive();
+      a.append(Buffer.from('pwn'), { name: 'xxxxxxxxxxxxx' });
+      void a.finalize();
+      const clean = await bufferFromArchive(a);
+      const malicious = patchEntryName(clean, 'xxxxxxxxxxxxx', '/etc/passwd_x');
+
+      const importedId = randomUUID();
+      service.createProjectDir(importedId);
+
+      await expect(
+        service.importArchive(importedId, malicious),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a ZIP with too many entries', async () => {
+      const a = new ZipArchive();
+      for (let i = 0; i < 2001; i++) {
+        a.append(Buffer.from('x'), { name: `f${i}.txt` });
+      }
+      void a.finalize();
+      const zipBuffer = await bufferFromArchive(a);
+
+      const importedId = randomUUID();
+      service.createProjectDir(importedId);
+
+      await expect(
+        service.importArchive(importedId, zipBuffer),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects garbage bytes that are not a valid ZIP', async () => {
+      const importedId = randomUUID();
+      service.createProjectDir(importedId);
+
+      await expect(
+        service.importArchive(importedId, Buffer.from('not a zip')),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

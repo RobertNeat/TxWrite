@@ -4,18 +4,25 @@ Branch `feature/ui-overhaul`. UI overhaul milestones M1–M7 are complete (see
 git history for details). See `docs/contracts/milestones.md` for the
 remaining milestone sequence.
 
-No work actively in progress — ZIP export endpoint (`GET
-/api/projects/:id/export.zip`, whole-project download) is implemented and
-verified live, pending commit. `ProjectFilesService.createArchive()`
-streams a ZIP built from `listFiles()` (not archiver's own directory()
-walk, so the existing symlink-confinement check also protects export),
-including empty directories. Wired to two UI surfaces per the mockups: the
-editor's file-tree toolbar (`#bZip` equivalent) and the profile picker's
-per-project kebab menu ("Eksportuj jako ZIP"), both plain `<a download>`
-links. Both reuse the `.ib`/`.mi` button classes shared with regular
-`<button>`s, so those classes got `color: inherit; text-decoration: none;
-cursor: pointer` added — otherwise the browser's default link styling
-(blue, underlined) showed through on the anchor variant.
+No work actively in progress — ZIP import endpoint (`POST
+/api/projects/import?ownerProfileId=&name=`, creates a new project from an
+uploaded ZIP) is implemented and verified live, pending commit.
+`ProjectFilesService.importArchive()` validates entry count, total
+uncompressed size, and every entry's path confinement (zip-slip) before
+writing anything, so a rejected import leaves no partial project; entries
+are written as plain files/dirs only (no real symlinks from a "symlink"
+entry). Wired to the profile picker's "Importuj ZIP" button
+(`#impBtn`/hidden `#zipIn` file input) per the mockup, naming the project
+after the ZIP filename with a `-2`/`-3` suffix on collision.
+
+Known limitation, not yet addressed: an imported project's `mainFile`
+always defaults to `main.tex` regardless of what the ZIP actually
+contains (e.g. importing this session's own export.zip round-trip, whose
+sources lived under `rozdziały/`, opens the editor on a nonexistent
+`main.tex`) — no main-file detection on import yet, matches the "Zip
+templates in the wild... need good defaults" item in
+project_assumptions.md, not tied to this milestone's zip-slip/size-limit
+scope.
 
 Known limitation, not yet addressed: two files with the same basename in
 different directories (e.g. `a/main.tex` and `b/main.tex`), or `main.tex`

@@ -84,6 +84,36 @@ export class ProjectsController {
     return project;
   }
 
+  @Post('import')
+  async importZip(
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const query = request.query as { ownerProfileId?: string; name?: string };
+    const ownerProfileId = query.ownerProfileId?.trim();
+    const name = query.name?.trim();
+    if (!ownerProfileId || !name) {
+      throw new BadRequestException('ownerProfileId and name are required');
+    }
+    const body = request.body;
+    if (!Buffer.isBuffer(body)) {
+      throw new BadRequestException(
+        'Expected application/octet-stream request body',
+      );
+    }
+
+    const project = this.projectsService.create({ name, ownerProfileId });
+    this.projectFiles.createProjectDir(project.id);
+    try {
+      await this.projectFiles.importArchive(project.id, body);
+    } catch (error) {
+      this.projectsService.delete(project.id);
+      this.projectFiles.deleteProjectDir(project.id);
+      throw error;
+    }
+    reply.status(201).send(project);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string): Project {
     return this.projectsService.findByIdOrThrow(id);

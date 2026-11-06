@@ -372,6 +372,34 @@ export class ProfilePickerComponent implements OnInit {
     this.newWorkspaceError.set('');
   }
 
+  async importZip(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Reset so selecting the same file again still fires 'change'.
+    input.value = '';
+    const profile = this.currentProfile();
+    if (!file || !profile) {
+      return;
+    }
+
+    const baseName = file.name.replace(/\.zip$/i, '');
+    const existing = this.currentProfileProjects().map((p) => p.name.toLowerCase());
+    let name = baseName;
+    let suffix = 2;
+    while (existing.includes(name.toLowerCase())) {
+      name = `${baseName}-${suffix}`;
+      suffix++;
+    }
+
+    try {
+      const project = await this.api.importProjectZip(name, profile.id, file);
+      this.projects.update((list) => [...list, project]);
+      this.showToast(`Zaimportowano katalog „${project.name}”`);
+    } catch {
+      this.showToast('Nie udało się zaimportować pliku ZIP.');
+    }
+  }
+
   // ---------- confirm dialog ----------
 
   closeDialog(): void {

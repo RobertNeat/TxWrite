@@ -175,6 +175,23 @@
             <button class="btn-p" type="submit" [disabled]="!loggedIn() || !currentProfile()">
               <svg class="ic" aria-hidden="true"><use href="#i-plus" /></svg>Utwórz
             </button>
+            <button
+              id="impBtn"
+              class="btn-o"
+              type="button"
+              [disabled]="!loggedIn() || !currentProfile()"
+              (click)="zipInput.click()"
+            >
+              <svg class="ic" aria-hidden="true"><use href="#i-upload" /></svg>Importuj ZIP
+            </button>
+            <input
+              id="zipIn"
+              #zipInput
+              type="file"
+              accept=".zip"
+              hidden
+              (change)="importZip($event)"
+            />
           </div>
           <div id="newErr" class="err" role="alert">{{ newWorkspaceError() }}</div>
         </form>

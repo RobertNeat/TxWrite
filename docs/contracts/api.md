@@ -46,6 +46,17 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
   checked `listFiles()` used by the file tree. Consumed as a plain
   `<a download>` link from both the editor's file-tree toolbar and the
   profile picker's per-project kebab menu ("Eksportuj jako ZIP").
+- `POST /api/projects/import?ownerProfileId=&name=` — raw
+  `application/octet-stream` ZIP body, creates a new project and unpacks
+  the archive into it. Validates entry count (max 2000), total
+  uncompressed size (max 200 MB), and every entry path (zip-slip:
+  traversal/absolute paths rejected) before writing anything; the project
+  row and directory are rolled back on any validation or write failure.
+  Every entry is written as a plain file/directory regardless of its
+  declared type, so an archive can never plant a real symlink. Consumed by
+  the profile picker's "Importuj ZIP" button (`#impBtn`/`#zipIn`), which
+  derives the project name from the ZIP filename and appends `-2`, `-3`,
+  etc. on a name collision within the current profile.
 
 File creation has no dedicated endpoint:
 the frontend creates a new file by `PUT`-ing empty content to a new path, which
