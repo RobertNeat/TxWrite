@@ -93,6 +93,22 @@ feature/projects-and-compile branch:
   masked by a stale cached response.
 - `GET /api/projects/:id/synctex?page&x&y&file=` — maps a PDF click back to a
   project-relative source file + line via `synctex edit` (UI overhaul M6).
+- `GET /api/projects/:id/export?format=md|tex|html|docx&file=` — converts a
+  project's source file to one of the export-menu formats (`ExportService`,
+  UI overhaul). `?file=` resolved the same way as compile/output.pdf/synctex
+  (`CompileService.exportTargetFile`). Same-format-as-source returns the raw
+  file (Markdown from `.md`, or a `latexpand`-flattened single `.tex` with
+  `\input`/`\include` expanded, from `.tex` — mockup: "jeden plik z
+  dołączonymi rozdziałami"); any other target format converts via pandoc
+  (`-f latex`/`-f markdown`). HTML uses `--standalone --embed-resources
+  --mathml`. Every pandoc invocation runs `docker/pandoc-filters/
+  safe-images.lua`, which strips any Image whose src is a remote URL,
+  absolute path, or contains `..` — without it, `--embed-resources`/docx's
+  image embedding will fetch remote URLs (SSRF) or inline arbitrary local
+  files by absolute path as base64 (verified both empirically against
+  pandoc 3.5 before adding the filter). A pandoc/latexpand failure returns
+  422 with a short stderr excerpt. PDF and Projekt (ZIP) in the same export
+  menu reuse `output.pdf`/`export.zip` directly, not this endpoint.
 
 `POST /compile` consumed by `PdfPreviewComponent`'s `.pv-bar` compile button,
 which also drives `CompilePanelComponent` (now presentational — takes
@@ -102,6 +118,10 @@ response and a live log from the `compile.*`/`install.*` SSE events.
 pdf.js), refreshed when a compile response's `pdfPath` is non-null. All three
 endpoints' `?file=` is driven by `ProjectWorkspaceComponent`'s `compileTarget`
 computed signal: the currently open file when it's `.tex`/`.md`, otherwise
-`undefined` (backend defaults to `mainFile`).
+`undefined` (backend defaults to `mainFile`). `GET /export` consumed by the
+same component's "Eksportuj" split button (`#split`/`#exp-car`/`#exp-pop`),
+which also drives PDF (compiles first if stale/missing) and ZIP (via
+`exportZipUrl`) from the same menu, and remembers the last-chosen format in
+`localStorage`.
 
 Nothing left unconsumed in this section.

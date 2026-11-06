@@ -128,6 +128,141 @@
   color: var(--muted);
 }
 
+.spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.split {
+  display: inline-flex;
+  height: 30px;
+  flex: none;
+}
+
+.sp-main,
+.sp-car {
+  height: 30px;
+  border: 1px solid var(--navy);
+  background: #fff;
+  color: var(--navy);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-main {
+  padding: 0 12px;
+  border-radius: 6px 0 0 6px;
+}
+
+.sp-car {
+  width: 30px;
+  justify-content: center;
+  border-radius: 0 6px 6px 0;
+  margin-left: -1px;
+  padding: 0;
+}
+
+.sp-main:hover,
+.sp-car:hover,
+.sp-car[aria-expanded='true'] {
+  background: var(--tint);
+}
+
+.pop {
+  position: fixed;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(19, 33, 63, 0.28);
+  overflow: hidden;
+  z-index: 70;
+}
+
+.exp-pop {
+  width: 340px;
+  padding: 6px;
+}
+
+.mi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+  color: inherit;
+  cursor: pointer;
+}
+
+.exp-pop .mi {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  white-space: normal;
+}
+
+.mi:hover,
+.mi:focus-visible {
+  background: var(--tint);
+}
+
+.mi[aria-checked='true'] {
+  background: var(--tint2);
+}
+
+.mi b {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mi small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 400;
+  grid-column: 1;
+}
+
+.mi .ex {
+  font: 500 12px var(--mono, monospace);
+  background: var(--tint2);
+  color: #243c70;
+  border-radius: 5px;
+  padding: 2px 7px;
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+}
+
+.mi-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 5px 4px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 0);
+  max-width: 720px;
+  padding: 11px 18px;
+  border-radius: 8px;
+  background: #14213d;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(19, 33, 63, 0.35);
+  z-index: 100;
+}
+
 .pv-scroll {
   flex: 1;
   min-height: 0;

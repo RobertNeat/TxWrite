@@ -17,6 +17,7 @@ import {
   type ProjectFileEntry,
 } from './project-files.service.js';
 import { UnsafePathError } from '../../common/files/safe-path.js';
+import { attachmentDisposition } from '../../common/files/content-disposition.js';
 import type { Project } from './project.entity.js';
 
 interface CreateProjectDto {
@@ -170,13 +171,9 @@ export class ProjectsController {
   exportZip(@Param('id') id: string, @Res() reply: FastifyReply): void {
     const project = this.projectsService.findByIdOrThrow(id);
     const archive = this.projectFiles.createArchive(id);
-    const asciiName = project.name.replace(/[^\x20-\x7e]/g, '_');
     reply
       .header('Content-Type', 'application/zip')
-      .header(
-        'Content-Disposition',
-        `attachment; filename="${asciiName}.zip"; filename*=UTF-8''${encodeURIComponent(project.name)}.zip`,
-      )
+      .header('Content-Disposition', attachmentDisposition(project.name, 'zip'))
       .send(archive);
   }
 

@@ -2,10 +2,13 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  HostListener,
+  Injector,
   OnChanges,
   OnDestroy,
   SimpleChanges,
   ViewChild,
+  afterNextRender,
   inject,
   input,
   output,
@@ -17,6 +20,33 @@ import type { CompileResult } from '../../core/api/api.types.js';
 import type { JumpTarget } from '../editor/editor.component.js';
 import { CompilePanelComponent } from '../compile-panel/compile-panel.component.js';
 import { pluralPl } from '../../shared/plural-pl.js';
+import { placePopover } from '../../shared/popover-position.js';
+
+/** Mockup's EXP list: PDF + pandoc-backed export formats + the whole-project ZIP, in display order. */
+const EXPORT_FORMATS: {
+  key: 'pdf' | 'md' | 'tex' | 'html' | 'docx' | 'zip';
+  label: string;
+  description: string;
+  extension: string;
+}[] = [
+  { key: 'pdf', label: 'PDF', description: 'Skompilowany dokument', extension: '.pdf' },
+  { key: 'md', label: 'Markdown', description: 'Konwersja przez Pandoc', extension: '.md' },
+  {
+    key: 'tex',
+    label: 'LaTeX',
+    description: 'Jeden plik z dołączonymi rozdziałami',
+    extension: '.tex',
+  },
+  { key: 'html', label: 'HTML', description: 'Strona ze wzorami', extension: '.html' },
+  { key: 'docx', label: 'Word', description: 'Dokument do dalszej edycji', extension: '.docx' },
+  {
+    key: 'zip',
+    label: 'Projekt (ZIP)',
+    description: 'Wszystkie pliki, w tym .sty i .cls',
+    extension: '.zip',
+  },
+];
+const LAST_EXPORT_FORMAT_KEY = 'editor.lastExportFormat';
 
 type PdfDocumentProxy = import('pdfjs-dist').PDFDocumentProxy;
 type PdfLoadingTask = import('pdfjs-dist').PDFDocumentLoadingTask;
@@ -153,7 +183,66 @@ interface RenderedPage {
         >
           <svg class="ic" aria-hidden="true"><use href="#i-fit" /></svg>
         </button>
+        <span class="spacer"></span>
+        <div class="split" id="split">
+          <button
+            id="exp-main"
+            class="btn sp-main"
+            type="button"
+            [title]="'Eksportuj jako ' + currentExportFormat().label"
+            (click)="runExport(currentExportFormat().key)"
+          >
+            <svg class="ic" aria-hidden="true"><use href="#i-download" /></svg>
+            <span>Eksportuj</span>
+          </button>
+          <button
+            id="exp-car"
+            #expCar
+            class="btn sp-car"
+            type="button"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="exportMenuOpen()"
+            aria-controls="exp-pop"
+            aria-label="Wybierz format eksportu"
+            (click)="$event.stopPropagation(); toggleExportMenu()"
+          >
+            <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+          </button>
+        </div>
       </div>
+
+      @if (exportMenuOpen()) {
+        <div id="exp-pop" #expPop class="pop exp-pop" role="menu" aria-label="Formaty eksportu">
+          @for (format of exportFormats; track format.key) {
+            @if (format.key === 'zip') {
+              <div class="mi-sep" role="separator"></div>
+            }
+            <button
+              [id]="'exp-item-' + format.key"
+              class="mi"
+              role="menuitemradio"
+              type="button"
+              [attr.aria-checked]="format.key === currentExportFormat().key"
+              (click)="runExport(format.key); closeExportMenu()"
+            >
+              <b
+                >{{ format.label }}
+                @if (format.key === currentExportFormat().key) {
+                  <svg class="ic" aria-hidden="true"><use href="#i-check" /></svg>
+                }
+              </b>
+              <small>{{ format.description }}</small>
+              <span class="ex">{{ format.extension }}</span>
+            </button>
+          }
+        </div>
+      }
+
+      @if (exportToast()) {
+        <div id="exp-toast" class="toast on" role="status" aria-live="polite">
+          {{ exportToast() }}
+        </div>
+      }
 
       <div class="pv-scroll" #scroll (scroll)="onScroll()">
         @if (error()) {
@@ -196,6 +285,7 @@ interface RenderedPage {
 })
 export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy {
   private readonly api = inject(ApiService);
+  private readonly injector = inject(Injector);
 
   readonly projectId = input.required<string>();
   /** Whether compileTarget() (the currently open file) is Markdown — used only to seed compiledIsMarkdown on load. */
@@ -209,6 +299,8 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   @ViewChild('scroll', { static: true }) private scrollRef!: ElementRef<HTMLDivElement>;
   @ViewChild('pages', { static: true }) private pagesRef!: ElementRef<HTMLDivElement>;
   @ViewChild('pageInput') private pageInputRef?: ElementRef<HTMLInputElement>;
+  @ViewChild('expCar') private expCarRef?: ElementRef<HTMLElement>;
+  @ViewChild('expPop') private expPopRef?: ElementRef<HTMLElement>;
 
   protected readonly ZOOM_STEP = ZOOM_STEP;
   protected readonly hasDocument = signal(false);
@@ -221,6 +313,17 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   protected readonly zoom = signal(1.1);
   protected readonly editingPageInput = signal(false);
   protected readonly lastResult = signal<CompileResult | null>(null);
+
+  protected readonly exportFormats = EXPORT_FORMATS;
+  protected readonly exportMenuOpen = signal(false);
+  protected readonly exportToast = signal('');
+  private readonly lastExportFormatKey = signal<(typeof EXPORT_FORMATS)[number]['key']>(
+    (localStorage.getItem(LAST_EXPORT_FORMAT_KEY) as
+      (typeof EXPORT_FORMATS)[number]['key'] | null) ?? 'pdf',
+  );
+  protected readonly currentExportFormat = () =>
+    EXPORT_FORMATS.find((f) => f.key === this.lastExportFormatKey()) ?? EXPORT_FORMATS[0];
+  private exportToastTimeout: ReturnType<typeof setTimeout> | null = null;
   /**
    * The file the currently-shown PDF/synctex actually belong to — decoupled
    * from compileTarget() (the editor's active tab), which changes on every
@@ -410,6 +513,88 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     if (!this.compiling()) {
       this.stale.set(true);
     }
+  }
+
+  // ---------- export (split button) ----------
+
+  @HostListener('document:click')
+  protected closeExportMenu(): void {
+    this.exportMenuOpen.set(false);
+  }
+
+  @HostListener('document:keydown.escape')
+  protected handleExportEscape(): void {
+    this.closeExportMenu();
+  }
+
+  protected toggleExportMenu(): void {
+    if (this.exportMenuOpen()) {
+      this.closeExportMenu();
+      return;
+    }
+    this.exportMenuOpen.set(true);
+    afterNextRender(
+      () => {
+        if (this.expPopRef && this.expCarRef) {
+          placePopover(this.expPopRef.nativeElement, this.expCarRef.nativeElement, false, 'right');
+        }
+      },
+      { injector: this.injector },
+    );
+  }
+
+  protected async runExport(key: (typeof EXPORT_FORMATS)[number]['key']): Promise<void> {
+    this.lastExportFormatKey.set(key);
+    localStorage.setItem(LAST_EXPORT_FORMAT_KEY, key);
+
+    if (key === 'zip') {
+      this.downloadUrl(this.api.exportZipUrl(this.projectId()));
+      return;
+    }
+    if (key === 'pdf') {
+      if (!this.hasDocument() || this.stale()) {
+        await this.compile();
+        if (!this.hasDocument()) {
+          this.showExportToast('Kompilacja nie powiodła się — brak PDF do eksportu.');
+          return;
+        }
+      }
+      this.downloadUrl(this.api.outputPdfUrl(this.projectId(), this.compiledTarget, Date.now()));
+      return;
+    }
+
+    try {
+      await this.flushEditorSave()?.();
+      const { blob, filename } = await this.api.exportDocument(
+        this.projectId(),
+        key,
+        this.compileTarget(),
+      );
+      const url = URL.createObjectURL(blob);
+      this.downloadUrl(url, filename);
+      URL.revokeObjectURL(url);
+    } catch {
+      this.showExportToast(
+        'Eksport nie powiódł się. Sprawdź, czy dokument kompiluje się poprawnie.',
+      );
+    }
+  }
+
+  private downloadUrl(url: string, filename?: string): void {
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) {
+      a.download = filename;
+    }
+    a.click();
+  }
+
+  private showExportToast(message: string): void {
+    this.exportToast.set(message);
+    if (this.exportToastTimeout) {
+      clearTimeout(this.exportToastTimeout);
+    }
+    this.exportToastTimeout = setTimeout(() => this.exportToast.set(''), 3200);
   }
 
   private async loadPdf(): Promise<void> {

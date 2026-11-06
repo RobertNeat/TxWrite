@@ -151,6 +151,12 @@ export class CompileService {
     return this.compileRunner.outputPdfPath(projectId, mainFile);
   }
 
+  /** Resolves ?file= (or the project's mainFile) for a given project, validated/existence-checked. */
+  exportTargetFile(projectId: string, targetFile?: string): string {
+    const project = this.projectsService.findByIdOrThrow(projectId);
+    return this.resolveTargetFile(projectId, project.mainFile, targetFile);
+  }
+
   /**
    * An explicit ?file= override lets the UI compile the file currently open
    * in the editor instead of always the project's configured main file (user
@@ -158,9 +164,10 @@ export class CompileService {
    * rozszerzenie tex albo md"). Falls back to project.mainFile when absent.
    * Validated the same way mainFile is (isValidMainFile) plus an existence
    * check against the project dir, since this one isn't vetted at project
-   * create/update time like mainFile is.
+   * create/update time like mainFile is. Also reused by export (UI overhaul)
+   * so ?file= behaves identically across compile/output.pdf/synctex/export.
    */
-  private resolveTargetFile(
+  resolveTargetFile(
     projectId: string,
     projectMainFile: string,
     targetFile?: string,

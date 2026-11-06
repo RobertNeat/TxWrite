@@ -81,7 +81,8 @@ RUN tlmgr install \
     biber biblatex \
     hyphen-polish babel-polish polski \
     minted \
-    collection-fontsrecommended
+    collection-fontsrecommended \
+    latexpand
 
 # Rebuild all formats now that hyphenation/babel packages are installed (they affect
 # format contents), and bake the result into the image so no compile ever triggers

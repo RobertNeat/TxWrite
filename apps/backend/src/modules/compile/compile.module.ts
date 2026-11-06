@@ -9,6 +9,7 @@ import { CompileRunnerService } from './compile-runner.service.js';
 import { SvgConverterService } from './svg-converter.service.js';
 import { PandocConverterService } from './pandoc-converter.service.js';
 import { SynctexService } from './synctex.service.js';
+import { ExportService } from './export.service.js';
 
 @Module({
   imports: [ProjectsModule, EventsModule, ResourceResolverModule],
@@ -20,6 +21,7 @@ import { SynctexService } from './synctex.service.js';
     SvgConverterService,
     PandocConverterService,
     SynctexService,
+    ExportService,
   ],
 })
 export class CompileModule {}

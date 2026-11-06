@@ -168,4 +168,24 @@ export class ApiService {
     const fileParam = targetFile ? `&file=${encodeURIComponent(targetFile)}` : '';
     return request(`/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}${fileParam}`);
   }
+
+  async exportDocument(
+    projectId: string,
+    format: 'md' | 'tex' | 'html' | 'docx',
+    targetFile?: string,
+  ): Promise<{ blob: Blob; filename?: string }> {
+    const params = new URLSearchParams({ format });
+    if (targetFile) {
+      params.set('file', targetFile);
+    }
+    const response = await fetch(`/api/projects/${projectId}/export?${params.toString()}`);
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Export failed (${response.status}): ${body}`);
+    }
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+    const filename = match ? decodeURIComponent(match[1]) : undefined;
+    return { blob: await response.blob(), filename };
+  }
 }

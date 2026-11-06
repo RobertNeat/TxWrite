@@ -7,6 +7,7 @@ import {
   Post,
   Query,
   Res,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { createReadStream, existsSync } from 'node:fs';
@@ -15,6 +16,15 @@ import {
   type CompileResultWithInstalls,
 } from './compile.service.js';
 import { SynctexService, type SynctexEditResult } from './synctex.service.js';
+import { ExportService, type ExportFormat } from './export.service.js';
+import { attachmentDisposition } from '../../common/files/content-disposition.js';
+
+const EXPORT_FORMATS: ReadonlySet<string> = new Set([
+  'md',
+  'tex',
+  'html',
+  'docx',
+]);
 
 function parseCoordinate(name: string, value: string): number {
   const parsed = Number(value);
@@ -29,6 +39,7 @@ export class CompileController {
   constructor(
     private readonly compileService: CompileService,
     private readonly synctexService: SynctexService,
+    private readonly exportService: ExportService,
   ) {}
 
   @Post('compile')
@@ -73,5 +84,39 @@ export class CompileController {
       parseCoordinate('y', y),
       file,
     );
+  }
+
+  @Get('export')
+  async export(
+    @Param('id') id: string,
+    @Query('format') format: string,
+    @Query('file') file: string | undefined,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    if (!EXPORT_FORMATS.has(format)) {
+      throw new BadRequestException(`Invalid format: ${format}`);
+    }
+    const sourceFile = this.compileService.exportTargetFile(id, file);
+    let result;
+    try {
+      result = await this.exportService.export(
+        id,
+        sourceFile,
+        format as ExportFormat,
+      );
+    } catch (error) {
+      throw new UnprocessableEntityException(
+        error instanceof Error ? error.message : 'Export failed',
+      );
+    }
+    const baseName = sourceFile.replace(/\.(tex|md)$/i, '');
+    reply
+      .header('Content-Type', result.mimeType)
+      .header('X-Content-Type-Options', 'nosniff')
+      .header(
+        'Content-Disposition',
+        attachmentDisposition(baseName, result.extension),
+      )
+      .send(result.content);
   }
 }
