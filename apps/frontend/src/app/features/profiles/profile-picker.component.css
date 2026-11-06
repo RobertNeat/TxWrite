@@ -639,6 +639,25 @@
   color: var(--navy);
 }
 
+.pdel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.pdel:hover {
+  background: var(--tint2);
+  color: var(--danger);
+}
+
 .pfoot {
   border-top: 1px solid var(--line);
   padding: 6px;

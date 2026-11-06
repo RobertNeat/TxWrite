@@ -34,6 +34,10 @@ export class ApiService {
     });
   }
 
+  deleteProfile(id: string): Promise<void> {
+    return request(`/api/profiles/${id}`, { method: 'DELETE' });
+  }
+
   // Projects
   listProjects(): Promise<Project[]> {
     return request('/api/projects');

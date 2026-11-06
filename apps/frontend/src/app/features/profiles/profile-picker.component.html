@@ -297,6 +297,15 @@
               <svg class="ic" aria-hidden="true"><use href="#i-check" /></svg>
             }
           </button>
+          <button
+            [id]="'profile-delete-' + profile.id"
+            class="pdel"
+            type="button"
+            [attr.aria-label]="'Usuń profil ' + profile.displayName"
+            (click)="$event.stopPropagation(); askDeleteProfile(profile)"
+          >
+            <svg class="ic" aria-hidden="true"><use href="#i-close" /></svg>
+          </button>
         </li>
       }
     </ul>

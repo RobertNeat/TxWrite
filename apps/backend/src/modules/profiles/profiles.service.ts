@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../common/database/database.service.js';
 import type { Profile } from './profile.entity.js';
@@ -41,5 +41,35 @@ export class ProfilesService {
       .prepare('SELECT * FROM profiles WHERE id = ?')
       .get(id) as unknown as ProfileRow | undefined;
     return row ? toProfile(row) : undefined;
+  }
+
+  /**
+   * Deletes the profile and all projects it owns (DB rows only — file
+   * cleanup is the controller's job via ProjectFilesService, kept out of
+   * this service so its spec can keep using an in-memory DB without a real
+   * DATA_DIR). Returns the deleted projects' ids so the controller knows
+   * which working directories to remove from disk.
+   */
+  delete(id: string): string[] {
+    if (!this.findById(id)) {
+      throw new NotFoundException(`Profile ${id} not found`);
+    }
+    const projectRows = this.database.db
+      .prepare('SELECT id FROM projects WHERE owner_profile_id = ?')
+      .all(id) as unknown as { id: string }[];
+    const projectIds = projectRows.map((row) => row.id);
+
+    this.database.db.exec('BEGIN');
+    try {
+      this.database.db
+        .prepare('DELETE FROM projects WHERE owner_profile_id = ?')
+        .run(id);
+      this.database.db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
+      this.database.db.exec('COMMIT');
+    } catch (error) {
+      this.database.db.exec('ROLLBACK');
+      throw error;
+    }
+    return projectIds;
   }
 }

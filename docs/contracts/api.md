@@ -22,7 +22,9 @@ see plan.md).
 Implemented on the backend (`apps/backend/src/modules/profiles`,
 `apps/backend/src/modules/projects`), feature/projects-and-compile branch:
 
-- `GET/POST /api/profiles` — consumed (feature/frontend-wiring: profile picker)
+- `GET/POST/DELETE /api/profiles`, `/api/profiles/:id` — consumed (feature/frontend-wiring:
+  profile picker; `DELETE` added UI overhaul, cascades to delete all of that
+  profile's projects, DB rows and working-directory files alike).
 - `GET/POST/PUT/DELETE /api/projects`, `/api/projects/:id` — consumed
   (profile picker's workspace list/create/rename/delete, UI overhaul branch).
 - `GET/PUT/DELETE /api/projects/:id/files/*` — consumed: `GET`/`PUT` by the

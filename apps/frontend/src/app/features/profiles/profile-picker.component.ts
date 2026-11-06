@@ -239,6 +239,25 @@ export class ProfilePickerComponent implements OnInit {
     return '';
   }
 
+  askDeleteProfile(profile: Profile): void {
+    this.closeProfilePopover();
+    this.confirmDialog.set({
+      title: `Czy na pewno chcesz usunąć środowisko „${profile.displayName}”?`,
+      body: `Zostanie usuniętych wraz z nim: ${this.workspaceCountLabel(profile.id)}. Tej operacji nie można cofnąć.`,
+      onConfirm: () => void this.deleteProfile(profile),
+    });
+  }
+
+  private async deleteProfile(profile: Profile): Promise<void> {
+    await this.api.deleteProfile(profile.id);
+    this.profiles.update((list) => list.filter((p) => p.id !== profile.id));
+    this.projects.update((list) => list.filter((p) => p.ownerProfileId !== profile.id));
+    if (this.currentProfileId() === profile.id) {
+      this.currentProfileId.set(this.profiles()[0]?.id ?? null);
+    }
+    this.showToast(`Usunięto środowisko „${profile.displayName}”`);
+  }
+
   async confirmAddProfile(): Promise<void> {
     const error = this.validateName(
       this.newProfileName,
