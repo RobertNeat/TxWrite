@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { AuthService } from './auth.service.js';
+import { AuthService, EmailNotVerifiedError } from './auth.service.js';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -172,21 +172,18 @@ describe('AuthService', () => {
   });
 
   describe('register / login / logout', () => {
-    it('register() sets the authenticated user on success', async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse(200, { user: null, accessTokenExpiresAt: FAR_FUTURE_EXPIRY }),
-      ); // restoreSession: not logged in
+    it('register() does not authenticate — it only triggers a verification email', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {})); // restoreSession: not logged in
       const { service } = createService();
       await service.ready;
 
       fetchMock.mockResolvedValueOnce(
-        jsonResponse(201, { user: USER, accessTokenExpiresAt: FAR_FUTURE_EXPIRY }),
+        jsonResponse(201, { pendingVerification: true, email: 'alice@example.com' }),
       );
-      const user = await service.register('alice@example.com', 'correct-password-123', 'Alice');
+      await service.register('alice@example.com', 'correct-password-123', 'Alice');
 
-      expect(user).toEqual(USER);
-      expect(service.isAuthenticated()).toBe(true);
-      expect(service.currentUser()).toEqual(USER);
+      expect(service.isAuthenticated()).toBe(false);
+      expect(service.currentUser()).toBeNull();
     });
 
     it('register() throws a Polish message and does not authenticate on a 409 (duplicate email)', async () => {
@@ -201,6 +198,57 @@ describe('AuthService', () => {
       expect(service.isAuthenticated()).toBe(false);
     });
 
+    it('verifyEmail() sets the authenticated user on success', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
+      const { service } = createService();
+      await service.ready;
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(201, { user: USER, accessTokenExpiresAt: FAR_FUTURE_EXPIRY }),
+      );
+      const user = await service.verifyEmail('alice@example.com', '123456');
+
+      expect(user).toEqual(USER);
+      expect(service.isAuthenticated()).toBe(true);
+      expect(service.currentUser()).toEqual(USER);
+    });
+
+    it('verifyEmail() throws a Polish message without authenticating on a wrong code', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
+      const { service } = createService();
+      await service.ready;
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(400, { code: 'CODE_INVALID', message: 'Invalid verification code' }),
+      );
+      await expect(service.verifyEmail('alice@example.com', '000000')).rejects.toThrow(
+        'Nieprawidłowy kod weryfikacyjny.',
+      );
+      expect(service.isAuthenticated()).toBe(false);
+    });
+
+    it('verifyEmail() surfaces an expired code distinctly from an invalid one', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
+      const { service } = createService();
+      await service.ready;
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(400, { code: 'CODE_EXPIRED', message: 'Verification code expired' }),
+      );
+      await expect(service.verifyEmail('alice@example.com', '000000')).rejects.toThrow(
+        'Kod wygasł — wyślij nowy kod.',
+      );
+    });
+
+    it('resendVerification() resolves on success', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
+      const { service } = createService();
+      await service.ready;
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(201, { ok: true }));
+      await expect(service.resendVerification('alice@example.com')).resolves.toBeUndefined();
+    });
+
     it('login() throws a Polish message and does not authenticate on a 401 (wrong credentials)', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
       const { service } = createService();
@@ -209,6 +257,20 @@ describe('AuthService', () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(401, { message: 'Invalid email or password' }));
       await expect(service.login('alice@example.com', 'wrong-password')).rejects.toThrow(
         'Nieprawidłowy adres e-mail lub hasło.',
+      );
+      expect(service.isAuthenticated()).toBe(false);
+    });
+
+    it('login() throws EmailNotVerifiedError when the password is correct but the account is unverified', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(401, {}));
+      const { service } = createService();
+      await service.ready;
+
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(403, { code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified' }),
+      );
+      await expect(service.login('alice@example.com', 'correct-password-123')).rejects.toThrow(
+        EmailNotVerifiedError,
       );
       expect(service.isAuthenticated()).toBe(false);
     });

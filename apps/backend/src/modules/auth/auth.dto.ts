@@ -26,3 +26,20 @@ export class LoginDto {
   @MaxLength(256)
   password!: string;
 }
+
+export class VerifyEmailDto {
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(6)
+  code!: string;
+}
+
+export class ResendVerificationDto {
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+}

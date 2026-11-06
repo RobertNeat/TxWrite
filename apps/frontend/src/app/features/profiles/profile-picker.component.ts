@@ -12,7 +12,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../core/api/api.service.js';
-import { AuthService } from '../../core/auth/auth.service.js';
+import { AuthService, EmailNotVerifiedError } from '../../core/auth/auth.service.js';
 import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
 import { BrandComponent } from '../../shared/brand.component.js';
 import { scrambleAll } from '../../shared/scramble.js';
@@ -78,6 +78,16 @@ export class ProfilePickerComponent implements OnInit {
   protected readonly loggingIn = signal(false);
   protected readonly accountEmail = signal('');
   protected readonly accountName = signal('');
+
+  protected readonly verifyMode = signal(false);
+  protected readonly verifyEmailAddress = signal('');
+  protected verifyCode = '';
+  protected readonly verifyCodeError = signal('');
+  protected readonly verifying = signal(false);
+  protected readonly resending = signal(false);
+  /** Flipped back to false by a timer (not read from Date.now() each render) so the button re-enables on its own without needing an unrelated click to trigger change detection. */
+  protected readonly resendCooldownActive = signal(false);
+  private resendCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 
   @ViewChild('newWorkspaceInput') private newWorkspaceInput?: ElementRef<HTMLInputElement>;
   @ViewChild('lbody') private lbody?: ElementRef<HTMLElement>;
@@ -495,6 +505,10 @@ export class ProfilePickerComponent implements OnInit {
       await this.auth.login(this.loginEmail.trim(), this.loginPassword);
       await this.completeLogin();
     } catch (error) {
+      if (error instanceof EmailNotVerifiedError) {
+        this.enterVerifyMode(error.email);
+        return;
+      }
       this.loginFormError.set(
         error instanceof Error ? error.message : 'Logowanie nie powiodło się.',
       );
@@ -511,18 +525,91 @@ export class ProfilePickerComponent implements OnInit {
     }
     this.loggingIn.set(true);
     try {
-      await this.auth.register(
-        this.loginEmail.trim(),
-        this.loginPassword,
-        this.registerDisplayName.trim(),
-      );
-      await this.completeLogin();
+      const email = this.loginEmail.trim();
+      await this.auth.register(email, this.loginPassword, this.registerDisplayName.trim());
+      this.enterVerifyMode(email);
     } catch (error) {
       this.loginFormError.set(
         error instanceof Error ? error.message : 'Rejestracja nie powiodła się.',
       );
     } finally {
       this.loggingIn.set(false);
+    }
+  }
+
+  // ---------- email verification (right panel) ----------
+
+  private enterVerifyMode(email: string): void {
+    this.verifyEmailAddress.set(email);
+    this.verifyCode = '';
+    this.verifyCodeError.set('');
+    this.verifyMode.set(true);
+    // register() and an EMAIL_NOT_VERIFIED login both already trigger a send
+    // server-side (the latter via AuthService.login's own resend-with-cooldown
+    // fallback), so the "wyślij ponownie" button starts on cooldown here too.
+    this.startResendCooldown();
+  }
+
+  private startResendCooldown(): void {
+    this.resendCooldownActive.set(true);
+    if (this.resendCooldownTimer) {
+      clearTimeout(this.resendCooldownTimer);
+    }
+    this.resendCooldownTimer = setTimeout(() => {
+      this.resendCooldownActive.set(false);
+    }, 60_000);
+  }
+
+  cancelVerify(): void {
+    this.verifyMode.set(false);
+    this.loginEmail = '';
+    this.loginPassword = '';
+    this.registerDisplayName = '';
+    if (this.resendCooldownTimer) {
+      clearTimeout(this.resendCooldownTimer);
+      this.resendCooldownTimer = null;
+    }
+  }
+
+  clearVerifyCodeError(): void {
+    this.verifyCodeError.set('');
+  }
+
+  async submitVerifyCode(): Promise<void> {
+    this.verifyCodeError.set('');
+    if (!/^\d{6}$/.test(this.verifyCode)) {
+      this.verifyCodeError.set('Podaj 6-cyfrowy kod.');
+      return;
+    }
+    this.verifying.set(true);
+    try {
+      await this.auth.verifyEmail(this.verifyEmailAddress(), this.verifyCode);
+      this.verifyMode.set(false);
+      await this.completeLogin();
+    } catch (error) {
+      this.verifyCodeError.set(
+        error instanceof Error ? error.message : 'Weryfikacja nie powiodła się.',
+      );
+    } finally {
+      this.verifying.set(false);
+    }
+  }
+
+  async resendVerificationCode(): Promise<void> {
+    if (this.resendCooldownActive()) {
+      return;
+    }
+    this.resending.set(true);
+    try {
+      await this.auth.resendVerification(this.verifyEmailAddress());
+      this.startResendCooldown();
+      this.showToast('Wysłano nowy kod.');
+    } catch (error) {
+      this.verifyCodeError.set(
+        error instanceof Error ? error.message : 'Nie udało się wysłać kodu.',
+      );
+    } finally {
+      this.resending.set(false);
     }
   }
 

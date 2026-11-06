@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app-setup.js';
+import { MailService } from '../src/modules/auth/mail/mail.service.js';
+import { DatabaseService } from '../src/common/database/database.service.js';
 
 /** Parses `Set-Cookie` response headers into a single `Cookie` request header value. */
 function cookieHeaderFrom(setCookieHeaders: string[] | undefined): string {
@@ -16,9 +18,20 @@ function cookieHeaderFrom(setCookieHeaders: string[] | undefined): string {
     .join('; ');
 }
 
+/** Captures codes instead of sending real email, so e2e tests can read what was "sent". */
+class FakeMailService {
+  readonly sentCodes = new Map<string, string>();
+
+  async sendVerificationCode(email: string, code: string): Promise<void> {
+    this.sentCodes.set(email, code);
+  }
+}
+
 describe('AppController (e2e)', () => {
   let app: NestFastifyApplication;
   let dataDir: string;
+  let fakeMail: FakeMailService;
+  let database: DatabaseService;
 
   beforeEach(async () => {
     process.env.JWT_SECRET ??= 'e2e-test-secret-at-least-32-characters-long';
@@ -30,11 +43,16 @@ describe('AppController (e2e)', () => {
     process.env.DATA_DIR = dataDir;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailService)
+      .useClass(FakeMailService)
+      .compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
     );
+    fakeMail = app.get(MailService) as unknown as FakeMailService;
+    database = app.get(DatabaseService);
     await configureApp(app);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -50,13 +68,22 @@ describe('AppController (e2e)', () => {
   });
 
   describe('auth', () => {
+    /** Registers, then immediately verifies using the code captured by FakeMailService, returning the resulting session cookie. */
     async function register(email: string, displayName: string) {
-      const response = await app.inject({
+      const registerResponse = await app.inject({
         method: 'POST',
         url: '/api/auth/register',
         payload: { email, password: 'correct-password-123', displayName },
       });
+      const code = fakeMail.sentCodes.get(email);
+      expect(code).toBeTruthy();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/verify-email',
+        payload: { email, code },
+      });
       return {
+        registerResponse,
         response,
         cookie: cookieHeaderFrom(
           response.cookies.map((c) => `${c.name}=${c.value}`),
@@ -72,7 +99,7 @@ describe('AppController (e2e)', () => {
       expect(response.statusCode).toBe(401);
     });
 
-    it('registers, sets cookies, and allows /auth/me with them', async () => {
+    it('registers without issuing a session, then verify-email sets cookies and allows /auth/me', async () => {
       const registerResponse = await app.inject({
         method: 'POST',
         url: '/api/auth/register',
@@ -83,8 +110,23 @@ describe('AppController (e2e)', () => {
         },
       });
       expect(registerResponse.statusCode).toBe(201);
+      expect(JSON.parse(registerResponse.payload)).toEqual({
+        pendingVerification: true,
+        email: 'alice@example.com',
+      });
+      expect(registerResponse.cookies).toHaveLength(0);
+
+      const code = fakeMail.sentCodes.get('alice@example.com');
+      expect(code).toMatch(/^\d{6}$/);
+
+      const verifyResponse = await app.inject({
+        method: 'POST',
+        url: '/api/auth/verify-email',
+        payload: { email: 'alice@example.com', code },
+      });
+      expect(verifyResponse.statusCode).toBe(201);
       const cookie = cookieHeaderFrom(
-        registerResponse.cookies.map((c) => `${c.name}=${c.value}`),
+        verifyResponse.cookies.map((c) => `${c.name}=${c.value}`),
       );
       expect(cookie).toContain('access_token=');
       expect(cookie).toContain('refresh_token=');
@@ -98,6 +140,136 @@ describe('AppController (e2e)', () => {
       const meBody = JSON.parse(meResponse.payload);
       expect(meBody.user.email).toBe('alice@example.com');
       expect(typeof meBody.accessTokenExpiresAt).toBe('string');
+    });
+
+    it('rejects an incorrect verification code without consuming it, and locks out after too many attempts', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: {
+          email: 'locked@example.com',
+          password: 'correct-password-123',
+          displayName: 'Locked',
+        },
+      });
+      for (let i = 0; i < 5; i++) {
+        const wrong = await app.inject({
+          method: 'POST',
+          url: '/api/auth/verify-email',
+          payload: { email: 'locked@example.com', code: '000000' },
+        });
+        expect(wrong.statusCode).toBe(400);
+        expect(JSON.parse(wrong.payload).code).toBe('CODE_INVALID');
+      }
+      const code = fakeMail.sentCodes.get('locked@example.com');
+      const afterLockout = await app.inject({
+        method: 'POST',
+        url: '/api/auth/verify-email',
+        payload: { email: 'locked@example.com', code },
+      });
+      expect(afterLockout.statusCode).toBe(403);
+    });
+
+    it('login fails with EMAIL_NOT_VERIFIED when the password is correct but the account is unverified, and sends a fresh code', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: {
+          email: 'unverified@example.com',
+          password: 'correct-password-123',
+          displayName: 'Unverified',
+        },
+      });
+      const registrationCode = fakeMail.sentCodes.get('unverified@example.com');
+
+      // Simulate the registration code having gone stale (tab closed before
+      // entering it, well past the 60s resend cooldown) before the user
+      // comes back and logs in instead.
+      database.db
+        .prepare(
+          'UPDATE email_verification_codes SET created_at = ? WHERE user_id = (SELECT id FROM users WHERE email = ?)',
+        )
+        .run(
+          new Date(Date.now() - 120_000).toISOString(),
+          'unverified@example.com',
+        );
+
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          email: 'unverified@example.com',
+          password: 'correct-password-123',
+        },
+      });
+      expect(loginResponse.statusCode).toBe(403);
+      expect(JSON.parse(loginResponse.payload).code).toBe('EMAIL_NOT_VERIFIED');
+
+      // A fresh code was issued as a side effect of the failed login, so the
+      // code-entry screen's "we sent you a code" claim is actually true.
+      const freshCode = fakeMail.sentCodes.get('unverified@example.com');
+      expect(freshCode).toBeTruthy();
+      expect(freshCode).not.toBe(registrationCode);
+
+      const verifyResponse = await app.inject({
+        method: 'POST',
+        url: '/api/auth/verify-email',
+        payload: { email: 'unverified@example.com', code: freshCode },
+      });
+      expect(verifyResponse.statusCode).toBe(201);
+    });
+
+    it('logs in normally once the account is verified', async () => {
+      await register('verified-login@example.com', 'Verified Login');
+
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          email: 'verified-login@example.com',
+          password: 'correct-password-123',
+        },
+      });
+      expect(loginResponse.statusCode).toBe(201);
+      const cookie = cookieHeaderFrom(
+        loginResponse.cookies.map((c) => `${c.name}=${c.value}`),
+      );
+      expect(cookie).toContain('access_token=');
+
+      const meResponse = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie },
+      });
+      expect(meResponse.statusCode).toBe(200);
+    });
+
+    it('resend-verification enforces a cooldown (registering already issues a code, starting it)', async () => {
+      await app.inject({
+        method: 'POST',
+        url: '/api/auth/register',
+        payload: {
+          email: 'resend@example.com',
+          password: 'correct-password-123',
+          displayName: 'Resend',
+        },
+      });
+
+      const tooSoonResponse = await app.inject({
+        method: 'POST',
+        url: '/api/auth/resend-verification',
+        payload: { email: 'resend@example.com' },
+      });
+      expect(tooSoonResponse.statusCode).toBe(403);
+    });
+
+    it('resend-verification returns ok for an unknown email (no account enumeration)', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/resend-verification',
+        payload: { email: 'nobody@example.com' },
+      });
+      expect(response.statusCode).toBe(201);
     });
 
     it('rejects registration with a too-short password', async () => {
@@ -132,17 +304,9 @@ describe('AppController (e2e)', () => {
     });
 
     it('rotates refresh tokens on a normal refresh', async () => {
-      const registerResponse = await app.inject({
-        method: 'POST',
-        url: '/api/auth/register',
-        payload: {
-          email: 'carol@example.com',
-          password: 'correct-password-123',
-          displayName: 'Carol',
-        },
-      });
-      const firstCookie = cookieHeaderFrom(
-        registerResponse.cookies.map((c) => `${c.name}=${c.value}`),
+      const { cookie: firstCookie } = await register(
+        'carol@example.com',
+        'Carol',
       );
 
       const refreshResponse = await app.inject({
@@ -157,17 +321,9 @@ describe('AppController (e2e)', () => {
       'within the reuse grace window, replaying an already-rotated token ' +
         'issues a sibling instead of revoking the family (two tabs refreshing at once)',
       async () => {
-        const registerResponse = await app.inject({
-          method: 'POST',
-          url: '/api/auth/register',
-          payload: {
-            email: 'dana@example.com',
-            password: 'correct-password-123',
-            displayName: 'Dana',
-          },
-        });
-        const firstCookie = cookieHeaderFrom(
-          registerResponse.cookies.map((c) => `${c.name}=${c.value}`),
+        const { cookie: firstCookie } = await register(
+          'dana@example.com',
+          'Dana',
         );
 
         const refreshResponse = await app.inject({
@@ -200,17 +356,9 @@ describe('AppController (e2e)', () => {
     );
 
     it('revokes the whole family when an old (backdated) refresh token is replayed', async () => {
-      const registerResponse = await app.inject({
-        method: 'POST',
-        url: '/api/auth/register',
-        payload: {
-          email: 'erin@example.com',
-          password: 'correct-password-123',
-          displayName: 'Erin',
-        },
-      });
-      const firstCookie = cookieHeaderFrom(
-        registerResponse.cookies.map((c) => `${c.name}=${c.value}`),
+      const { cookie: firstCookie } = await register(
+        'erin@example.com',
+        'Erin',
       );
       const firstTokenId = firstCookie.match(/refresh_token=([^.;]+)\./)?.[1];
       expect(firstTokenId).toBeTruthy();
@@ -250,18 +398,7 @@ describe('AppController (e2e)', () => {
     });
 
     it('logout revokes the whole refresh token family', async () => {
-      const registerResponse = await app.inject({
-        method: 'POST',
-        url: '/api/auth/register',
-        payload: {
-          email: 'frank@example.com',
-          password: 'correct-password-123',
-          displayName: 'Frank',
-        },
-      });
-      const cookie = cookieHeaderFrom(
-        registerResponse.cookies.map((c) => `${c.name}=${c.value}`),
-      );
+      const { cookie } = await register('frank@example.com', 'Frank');
 
       const logoutResponse = await app.inject({
         method: 'POST',

@@ -10,7 +10,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service.js';
-import { RegisterDto, LoginDto } from './auth.dto.js';
+import {
+  RegisterDto,
+  LoginDto,
+  VerifyEmailDto,
+  ResendVerificationDto,
+} from './auth.dto.js';
 import { Public } from './public.decorator.js';
 import {
   CurrentUserId,
@@ -39,18 +44,36 @@ export class AuthController {
   @Post('register')
   async register(
     @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<AuthResponse> {
-    const { user, tokens } = await this.authService.register(
+  ): Promise<{ pendingVerification: true; email: string }> {
+    const user = await this.authService.register(
       dto.email,
       dto.password,
       dto.displayName,
     );
+    return { pendingVerification: true, email: user.email! };
+  }
+
+  @Public()
+  @Post('verify-email')
+  verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): AuthResponse {
+    const { user, tokens } = this.authService.verifyEmail(dto.email, dto.code);
     setAuthCookies(reply, this.config, tokens);
     return {
       user,
       accessTokenExpiresAt: tokens.accessTokenExpiresAt.toISOString(),
     };
+  }
+
+  @Public()
+  @Post('resend-verification')
+  async resendVerification(
+    @Body() dto: ResendVerificationDto,
+  ): Promise<{ ok: true }> {
+    await this.authService.resendVerification(dto.email);
+    return { ok: true };
   }
 
   @Public()

@@ -10,6 +10,13 @@ interface AuthResponse {
 /** Tri-state so a transient network/5xx error (e.g. dev-proxy mid-rebuild) isn't treated as logout. */
 type RefreshResult = 'ok' | 'unauthenticated' | 'transient-error';
 
+/** Thrown by login() specifically when the password was correct but the account's email isn't verified yet, so the UI can route to code entry instead of showing a generic error. */
+export class EmailNotVerifiedError extends Error {
+  constructor(readonly email: string) {
+    super('Email not verified');
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly router = inject(Router);
@@ -67,7 +74,8 @@ export class AuthService {
     }, delay);
   }
 
-  async register(email: string, password: string, displayName: string): Promise<User> {
+  /** Creates the account and triggers a verification-code email; does not start a session. */
+  async register(email: string, password: string, displayName: string): Promise<void> {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,11 +84,51 @@ export class AuthService {
     if (!response.ok) {
       throw new Error(await this.errorMessage(response));
     }
+  }
+
+  /** Verifies the 6-digit code and starts the session on success. */
+  async verifyEmail(email: string, code: string): Promise<User> {
+    const response = await fetch('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    if (!response.ok) {
+      throw new Error(await this.verifyEmailErrorMessage(response));
+    }
     const body = (await response.json()) as AuthResponse;
     this.currentUser.set(body.user);
     this.isAuthenticated.set(true);
     this.scheduleProactiveRefresh(body.accessTokenExpiresAt);
     return body.user;
+  }
+
+  private async verifyEmailErrorMessage(response: Response): Promise<string> {
+    const body = (await response.json().catch(() => null)) as {
+      code?: string;
+      message?: string | string[];
+    } | null;
+    switch (body?.code) {
+      case 'CODE_EXPIRED':
+        return 'Kod wygasł — wyślij nowy kod.';
+      case 'CODE_LOCKED':
+        return 'Zbyt wiele błędnych prób — wyślij nowy kod.';
+      case 'CODE_INVALID':
+        return 'Nieprawidłowy kod weryfikacyjny.';
+      default:
+        return this.messageFromBody(body, response.status);
+    }
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    const response = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!response.ok) {
+      throw new Error(await this.errorMessage(response));
+    }
   }
 
   async login(email: string, password: string): Promise<User> {
@@ -90,6 +138,16 @@ export class AuthService {
       body: JSON.stringify({ email, password }),
     });
     if (!response.ok) {
+      if (response.status === 403) {
+        const body = (await response.json().catch(() => null)) as {
+          code?: string;
+          message?: string | string[];
+        } | null;
+        if (body?.code === 'EMAIL_NOT_VERIFIED') {
+          throw new EmailNotVerifiedError(email);
+        }
+        throw new Error(this.messageFromBody(body, response.status));
+      }
       throw new Error(await this.errorMessage(response));
     }
     const body = (await response.json()) as AuthResponse;
@@ -161,14 +219,21 @@ export class AuthService {
     if (response.status === 409) {
       return 'Konto z tym adresem e-mail już istnieje.';
     }
+    if (response.status === 403) {
+      return 'Zbyt wiele prób — spróbuj ponownie później.';
+    }
     try {
       const body = (await response.json()) as { message?: string | string[] };
-      if (Array.isArray(body.message)) {
-        return body.message.join(', ');
-      }
-      return body.message ?? `Żądanie nie powiodło się (${response.status}).`;
+      return this.messageFromBody(body, response.status);
     } catch {
       return `Żądanie nie powiodło się (${response.status}).`;
     }
+  }
+
+  private messageFromBody(body: { message?: string | string[] } | null, status: number): string {
+    if (Array.isArray(body?.message)) {
+      return body.message.join(', ');
+    }
+    return body?.message ?? `Żądanie nie powiodło się (${status}).`;
   }
 }

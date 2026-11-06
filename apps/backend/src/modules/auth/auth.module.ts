@@ -9,6 +9,8 @@ import { UsersService } from './users.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 import { AuthGuard } from './auth.guard.js';
+import { EmailVerificationService } from './email-verification.service.js';
+import { MailService } from './mail/mail.service.js';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { AuthGuard } from './auth.guard.js';
     UsersService,
     PasswordService,
     TokenService,
+    EmailVerificationService,
+    MailService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
   exports: [UsersService, TokenService],

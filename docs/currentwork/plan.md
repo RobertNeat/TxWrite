@@ -2,7 +2,9 @@
 
 Branch `feature/ui-overhaul`.
 
-No work actively in progress.
+- Style the verification-code email (currently plain text/minimal HTML in
+  `apps/backend/src/modules/auth/mail/verification-email.template.ts`) —
+  explicitly deferred to a later step in this same change cycle.
 
 # Postponed for future sessions
 

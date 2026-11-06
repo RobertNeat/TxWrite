@@ -39,6 +39,9 @@ The gap: a **small image + lazy package/font resolution + Markdown and LaTeX und
   `user_identities` is provider-agnostic (local login is `provider='local'`) so OIDC providers
   (Google, Keycloak) can be added later without a schema change — see
   `docs/contracts/milestones.md`.
+- Registration requires email verification: a 6-digit code is emailed (SMTP via `nodemailer`,
+  logged instead when no SMTP is configured) and must be entered before the account's first
+  session starts.
 - A profile is a convenience grouping of projects (display name, id) owned by exactly one user.
   Profiles are not themselves a security boundary beyond the user that owns them — every
   profile/project/file/compile/export endpoint is scoped to the authenticated user's own profiles.

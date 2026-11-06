@@ -199,7 +199,61 @@
     </section>
 
     <section id="profile-picker-right" class="right" aria-label="Logowanie i konto">
-      @if (!loggedIn()) {
+      @if (!loggedIn() && verifyMode()) {
+        <div id="verify-email-panel" class="rbody login">
+          <h2 tabindex="-1">Potwierdź adres e-mail</h2>
+          <p class="sub">
+            Wysłaliśmy 6-cyfrowy kod na adres <b>{{ verifyEmailAddress() }}</b
+            >. Wpisz go, aby aktywować konto.
+          </p>
+          <form id="verifyForm" novalidate (ngSubmit)="submitVerifyCode()">
+            <div class="fld">
+              <label for="verifyCode">Kod weryfikacyjny</label>
+              <input
+                id="verifyCode"
+                class="in"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="6"
+                placeholder="123456"
+                aria-describedby="verifyCodeErr"
+                [attr.aria-invalid]="verifyCodeError() ? 'true' : null"
+                [(ngModel)]="verifyCode"
+                name="verifyCode"
+                (input)="clearVerifyCodeError()"
+              />
+            </div>
+            <div id="verifyCodeErr" class="err" role="alert">{{ verifyCodeError() }}</div>
+
+            <button id="verifyBtn" class="btn-p" type="submit" [disabled]="verifying()">
+              @if (verifying()) {
+                <svg class="ic spin" aria-hidden="true"><use href="#i-spin" /></svg>
+                Weryfikowanie…
+              } @else {
+                Potwierdź
+              }
+            </button>
+          </form>
+          <p class="demo">
+            Nie dostałeś kodu?
+            <button
+              id="resendVerifyBtn"
+              class="lnk"
+              type="button"
+              [disabled]="resending() || resendCooldownActive()"
+              (click)="resendVerificationCode()"
+            >
+              Wyślij ponownie
+            </button>
+          </p>
+          <p class="demo">
+            <button id="cancelVerifyBtn" class="lnk" type="button" (click)="cancelVerify()">
+              Wróć do logowania
+            </button>
+          </p>
+        </div>
+      } @else if (!loggedIn()) {
         <div class="rbody login">
           @if (!registerMode()) {
             <h2 tabindex="-1">Zaloguj się</h2>

@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { APP_NAME } from './app-name';
 
 @Component({
   selector: 'app-brand',
@@ -16,7 +17,7 @@ import { Component } from '@angular/core';
         />
       </svg>
       <div>
-        <b id="brand-title">Redaktor</b>
+        <b id="brand-title">{{ APP_NAME }}</b>
         <small id="brand-subtitle">Markdown · LaTeX</small>
       </div>
     </div>
@@ -43,4 +44,6 @@ import { Component } from '@angular/core';
     `,
   ],
 })
-export class BrandComponent {}
+export class BrandComponent {
+  readonly APP_NAME = APP_NAME;
+}

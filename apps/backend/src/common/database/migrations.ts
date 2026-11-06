@@ -78,4 +78,29 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    // Email verification. `email_verified_at` lives on `users` (not
+    // `user_identities`) so a future OIDC identity (Google, Keycloak) can
+    // simply set it at creation time, since those providers already verify
+    // the email — no schema change needed for that case. Pre-existing users
+    // (registered before this migration) are backfilled as verified so the
+    // already-running deployment doesn't lock anyone out.
+    version: 3,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE users ADD COLUMN email_verified_at TEXT;
+
+        CREATE TABLE email_verification_codes (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          code_hash TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      db.prepare(
+        `UPDATE users SET email_verified_at = ? WHERE email_verified_at IS NULL`,
+      ).run(new Date().toISOString());
+    },
+  },
 ];
