@@ -119,6 +119,10 @@ export class ApiService {
     });
   }
 
+  exportZipUrl(projectId: string): string {
+    return `/api/projects/${projectId}/export.zip`;
+  }
+
   createDir(projectId: string, path: string): Promise<{ path: string }> {
     return request(`/api/projects/${projectId}/dirs`, {
       method: 'POST',

@@ -136,6 +136,20 @@ export class ProjectsController {
     return { path };
   }
 
+  @Get(':id/export.zip')
+  exportZip(@Param('id') id: string, @Res() reply: FastifyReply): void {
+    const project = this.projectsService.findByIdOrThrow(id);
+    const archive = this.projectFiles.createArchive(id);
+    const asciiName = project.name.replace(/[^\x20-\x7e]/g, '_');
+    reply
+      .header('Content-Type', 'application/zip')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="${asciiName}.zip"; filename*=UTF-8''${encodeURIComponent(project.name)}.zip`,
+      )
+      .send(archive);
+  }
+
   @Get(':id/files/*')
   getFile(
     @Param('id') id: string,

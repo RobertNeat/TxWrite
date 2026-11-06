@@ -16,6 +16,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import { ZipArchive } from 'archiver';
 import { resolveSafePath } from '../../common/files/safe-path.js';
 import { isValidUuid } from '../../common/ids.js';
 
@@ -88,6 +89,27 @@ export class ProjectFilesService {
     }
     mkdirSync(dirname(toPath), { recursive: true });
     renameSync(fromPath, toPath);
+  }
+
+  /**
+   * Streams a ZIP of the whole project. Built from listFiles() rather than
+   * archiver's own directory() walk so the symlink-confinement check there
+   * (see its doc comment) also protects export — otherwise a symlink
+   * planted inside the project could leak files from outside it into the
+   * archive.
+   */
+  createArchive(projectId: string): ZipArchive {
+    const projectDir = this.projectDir(projectId);
+    const archive = new ZipArchive();
+    for (const entry of this.listFiles(projectId)) {
+      if (entry.isDirectory) {
+        archive.append('', { name: `${entry.path}/` });
+      } else {
+        archive.file(join(projectDir, entry.path), { name: entry.path });
+      }
+    }
+    void archive.finalize();
+    return archive;
   }
 
   /**

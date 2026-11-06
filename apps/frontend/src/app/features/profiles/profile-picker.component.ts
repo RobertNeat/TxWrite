@@ -298,6 +298,10 @@ export class ProfilePickerComponent implements OnInit {
     this.kebabForProjectId.set(null);
   }
 
+  exportZipUrl(project: Project): string {
+    return this.api.exportZipUrl(project.id);
+  }
+
   startRename(project: Project): void {
     this.closeKebab();
     this.renamingProjectId.set(project.id);

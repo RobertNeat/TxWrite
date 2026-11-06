@@ -5,8 +5,31 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fromBufferPromise } from 'yauzl';
 import { UnsafePathError } from '../../common/files/safe-path.js';
 import { ProjectFilesService } from './project-files.service.js';
+
+async function readArchiveEntryNames(
+  archive: NodeJS.ReadableStream,
+): Promise<string[]> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of archive) {
+    chunks.push(chunk as Buffer);
+  }
+  // fromBufferPromise always forces lazyEntries:true internally, so each
+  // entry must be drained with readEntry() or 'end' never fires.
+  const zip = await fromBufferPromise(Buffer.concat(chunks));
+  const names: string[] = [];
+  return new Promise((resolve, reject) => {
+    zip.on('entry', (entry) => {
+      names.push(entry.fileName);
+      zip.readEntry();
+    });
+    zip.on('end', () => resolve(names));
+    zip.on('error', reject);
+    zip.readEntry();
+  });
+}
 
 describe('ProjectFilesService', () => {
   let service: ProjectFilesService;
@@ -140,6 +163,36 @@ describe('ProjectFilesService', () => {
       const entries = service.listFiles(projectId);
       expect(entries.map((e) => e.path)).toEqual(['main.tex']);
 
+      rmSync(outsideDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('createArchive', () => {
+    it('includes files, nested files, and empty directories', async () => {
+      service.writeFile(projectId, 'main.tex', Buffer.from('hello'));
+      service.writeFile(projectId, 'images/figure.svg', Buffer.from('<svg/>'));
+      service.createDir(projectId, 'empty');
+
+      const names = await readArchiveEntryNames(
+        service.createArchive(projectId),
+      );
+
+      expect(names).toEqual(
+        expect.arrayContaining(['main.tex', 'images/figure.svg', 'empty/']),
+      );
+    });
+
+    it('excludes a symlink that escapes the project root', async () => {
+      const outsideDir = mkdtempSync(join(tmpdir(), 'outside-'));
+      const projectDir = service.projectDir(projectId);
+      symlinkSync(outsideDir, join(projectDir, 'escape'), 'junction');
+      service.writeFile(projectId, 'main.tex', Buffer.from('x'));
+
+      const names = await readArchiveEntryNames(
+        service.createArchive(projectId),
+      );
+
+      expect(names).toEqual(['main.tex']);
       rmSync(outsideDir, { recursive: true, force: true });
     });
   });

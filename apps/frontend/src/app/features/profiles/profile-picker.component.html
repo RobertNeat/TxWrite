@@ -117,6 +117,17 @@
                     <button class="mi" role="menuitem" type="button" (click)="startRename(project)">
                       <svg class="ic" aria-hidden="true"><use href="#i-pencil" /></svg>Edytuj nazwę
                     </button>
+                    <a
+                      [id]="'workspace-export-' + project.id"
+                      class="mi"
+                      role="menuitem"
+                      [href]="exportZipUrl(project)"
+                      download
+                      (click)="closeKebab()"
+                    >
+                      <svg class="ic" aria-hidden="true"><use href="#i-zip" /></svg>Eksportuj jako
+                      ZIP
+                    </a>
                     <div class="mi-sep" role="separator"></div>
                     <button
                       class="mi danger"

@@ -4,14 +4,18 @@ Branch `feature/ui-overhaul`. UI overhaul milestones M1–M7 are complete (see
 git history for details). See `docs/contracts/milestones.md` for the
 remaining milestone sequence.
 
-No work actively in progress — profile delete endpoint (`DELETE
-/api/profiles/:id`, cascading to delete all of that profile's projects, DB
-rows and working-directory files) is implemented and verified live, pending
-commit. Along the way, fixed a pre-existing bug in `shared/scramble.ts`:
-it replaced an element's text node via `el.textContent`, which orphaned
-Angular's binding reference to that node — any update after the first
-scramble (switching profiles, deleting one, logging out) left stale text
-on screen. Now mutates the existing text node's `nodeValue` in place.
+No work actively in progress — ZIP export endpoint (`GET
+/api/projects/:id/export.zip`, whole-project download) is implemented and
+verified live, pending commit. `ProjectFilesService.createArchive()`
+streams a ZIP built from `listFiles()` (not archiver's own directory()
+walk, so the existing symlink-confinement check also protects export),
+including empty directories. Wired to two UI surfaces per the mockups: the
+editor's file-tree toolbar (`#bZip` equivalent) and the profile picker's
+per-project kebab menu ("Eksportuj jako ZIP"), both plain `<a download>`
+links. Both reuse the `.ib`/`.mi` button classes shared with regular
+`<button>`s, so those classes got `color: inherit; text-decoration: none;
+cursor: pointer` added — otherwise the browser's default link styling
+(blue, underlined) showed through on the anchor variant.
 
 Known limitation, not yet addressed: two files with the same basename in
 different directories (e.g. `a/main.tex` and `b/main.tex`), or `main.tex`

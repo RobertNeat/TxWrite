@@ -103,6 +103,9 @@
   border-radius: 6px;
   background: transparent;
   color: var(--navy);
+  /* .ib is also used on an <a> (export-as-ZIP download link) alongside
+     <button> toolbar icons — strip link defaults so it reads the same. */
+  text-decoration: none;
 }
 
 .ib:hover:not(:disabled) {

@@ -41,6 +41,11 @@ Implemented on the backend (`apps/backend/src/modules/profiles`,
   directory (including intermediate parents). 409 if anything already exists
   at that path. Confinement-checked. Consumed by the file tree's "Nowy
   katalog" action.
+- `GET /api/projects/:id/export.zip` — streams the whole project as a ZIP
+  (files + empty directories), built from the same symlink-confinement-
+  checked `listFiles()` used by the file tree. Consumed as a plain
+  `<a download>` link from both the editor's file-tree toolbar and the
+  profile picker's per-project kebab menu ("Eksportuj jako ZIP").
 
 File creation has no dedicated endpoint:
 the frontend creates a new file by `PUT`-ing empty content to a new path, which

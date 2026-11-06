@@ -208,6 +208,10 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.fileTree?.startNewDir();
   }
 
+  exportZipUrl(): string {
+    return this.api.exportZipUrl(this.projectId());
+  }
+
   onToolbarFileUploaded(): void {
     void this.fileTree?.refresh();
   }
