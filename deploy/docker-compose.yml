@@ -1,0 +1,61 @@
+# Pinned so moving this file into deploy/ doesn't rename the compose
+# project (the default project name is the compose file's own directory —
+# without this, volumes would become deploy_data/deploy_cache, orphaning the
+# existing latex_markdown_editor_data/_cache volumes and their contents).
+name: latex_markdown_editor
+
+services:
+  app:
+    # Reads the one repo-root .env (see ../.env.example) into the
+    # container's environment — the same file the backend itself reads when
+    # run outside Docker (apps/backend's ConfigModule resolves .env relative
+    # to the repo root, not CWD, so both paths share one file). Note this is
+    # NOT the same mechanism as ${...} interpolation below, which only ever
+    # sees the shell/CLI environment or a top-level .env that `docker
+    # compose` auto-loads from its own working directory — a service-level
+    # env_file can't feed that. JWT_SECRET is therefore read by the backend
+    # process itself via env_file, not substituted into this file.
+    env_file:
+      - path: ../.env
+        required: false
+    build:
+      # Build context stays the repo root (one level up from this file) since
+      # the Dockerfile's COPY paths (apps/..., docker/...) are relative to it,
+      # not to this file's own location.
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        # Must match the runtime TEX_REPO_URL below — this is what install-tl
+        # actually fetches from at build time; the runtime value is what tlmgr
+        # uses for lazy installs afterwards. The entrypoint checks both ARGs against
+        # the runtime env vars below at container start and refuses to start on a
+        # mismatch (section 6.6: caches must never silently mix across snapshots).
+        # Build args can't read ../.env (only interpolation can, see the note
+        # above), so this stays pinned here rather than moving to .env.example.
+        TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+        TL_SNAPSHOT_KEY: "2026-10-01"
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Container-specific values that must override whatever the shared
+      # root .env sets for local (non-Docker) dev — e.g. .env's HOST/DATA_DIR
+      # are for `pnpm start:dev` on the host, not this container's own
+      # filesystem/network namespace. Tunables that are fine to share (JWT
+      # TTLs, COOKIE_SECURE, etc.) are deliberately left out of this block so
+      # editing the root .env actually takes effect here via env_file above.
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      CACHE_DIR: /cache
+      PACKAGE_INDEX_PATH: /opt/app/package-index.json.gz
+      # Frozen dated snapshot, not the rolling tlnet mirror (see
+      # docs/project_assumptons/architecture.md section 6.6). Verified reachable
+      # 2026-11-01. Must match the TEX_REPO_URL build ARG above.
+      TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+    volumes:
+      - data:/data
+      - cache:/cache
+
+volumes:
+  data:
+  cache:

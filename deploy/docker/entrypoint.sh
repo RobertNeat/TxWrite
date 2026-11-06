@@ -9,15 +9,16 @@ set -eu
 # (architecture.md section 7).
 CACHE_DIR="${CACHE_DIR:-/cache}"
 
-# Runtime TEX_REPO_URL (docker-compose.yml env) must match what the image was
-# actually built against (TL_IMAGE_REPO_URL, baked in as an ENV from the
-# TEX_REPO_URL build ARG). If they drift, lazily-installed packages would come from
-# a different snapshot than the baked-in TeX Live install and kernel/formats —
-# exactly the package-date mixing section 6.6 says must never happen. Refuse to
-# start rather than silently using the wrong repository.
+# Runtime TEX_REPO_URL (deploy/docker-compose.yml env) must match what the
+# image was actually built against (TL_IMAGE_REPO_URL, baked in as an ENV from
+# the TEX_REPO_URL build ARG). If they drift, lazily-installed packages would
+# come from a different snapshot than the baked-in TeX Live install and
+# kernel/formats — exactly the package-date mixing section 6.6 says must
+# never happen. Refuse to start rather than silently using the wrong
+# repository.
 if [ "${TEX_REPO_URL:-}" != "${TL_IMAGE_REPO_URL:-}" ]; then
   echo "entrypoint: TEX_REPO_URL ('${TEX_REPO_URL:-unset}') does not match the image's TL_IMAGE_REPO_URL ('${TL_IMAGE_REPO_URL:-unset}')." >&2
-  echo "entrypoint: refusing to start — update docker-compose.yml so both the build arg and the runtime env var point at the same snapshot." >&2
+  echo "entrypoint: refusing to start — update deploy/docker-compose.yml so both the build arg and the runtime env var point at the same snapshot." >&2
   exit 1
 fi
 

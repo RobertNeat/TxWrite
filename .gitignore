@@ -12,11 +12,12 @@ apps/backend/public/
 # Local dev data (self-hosted app volumes equivalent)
 .local-data/
 
-# Environment
+# Environment — one shared .env at the repo root (see .env.example), used by
+# both local dev and deploy/docker-compose.yml's env_file.
 .env
 .env.*
 !.env.example
-deploy/local.env
+!env.example
 
 # Logs
 log/

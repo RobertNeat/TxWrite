@@ -64,7 +64,7 @@ WORKDIR /tmp/texlive-install
 RUN curl -fsSL "${TEX_REPO_URL}install-tl-unx.tar.gz" -o install-tl-unx.tar.gz \
     && tar -xzf install-tl-unx.tar.gz --strip-components=1 \
     && rm install-tl-unx.tar.gz
-COPY docker/texlive.profile ./texlive.profile
+COPY deploy/docker/texlive.profile ./texlive.profile
 # -no-verify-downloads would silence this cleanly, but the upstream flag for turning
 # verification ON by default already applies here: install-tl verifies the tlpdb's
 # GPG signature against its own bundled keyring when gnupg is available (installed
@@ -119,7 +119,7 @@ RUN dpkgArch="$(dpkg --print-architecture)" \
 # image-build time from the pinned snapshot's full tlpdb (which lists every
 # package in the repository, not just what's installed locally), refreshed only
 # when the pinned snapshot changes.
-COPY docker/build-package-index.pl /tmp/build-package-index.pl
+COPY deploy/docker/build-package-index.pl /tmp/build-package-index.pl
 # install-tl already downloaded and GPG-verified the full remote tlpdb once, to
 # /opt/texlive/tlpkg/texlive.tlpdb.main.<hash> — reuse that cached, verified copy
 # instead of a second, unverified curl download of the same 20+MB file.
@@ -155,22 +155,23 @@ COPY --from=toolchain /usr/local/bin/pandoc /usr/local/bin/pandoc
 ENV PATH="/opt/texlive/bin/x86_64-linux:${PATH}"
 # TL_IMAGE_REPO_URL and TL_SNAPSHOT_KEY record what the image was actually built
 # against. Kept separate from the runtime TEX_REPO_URL env var (set in
-# docker-compose.yml), which docker/entrypoint.sh checks against this at container
-# start — the two must always refer to the same snapshot (see section 6.6).
+# deploy/docker-compose.yml), which deploy/docker/entrypoint.sh checks against
+# this at container start — the two must always refer to the same snapshot
+# (see section 6.6).
 ENV TL_IMAGE_REPO_URL=${TEX_REPO_URL}
 ENV TL_SNAPSHOT_KEY=${TL_SNAPSHOT_KEY}
 
 # Without this, fontconfig (and therefore XeTeX/fontspec) cannot see TeX Live's
 # bundled fonts (Latin Modern, TeX Gyre, etc.) at all, since /opt/texlive is outside
 # fontconfig's default search dirs.
-COPY docker/texlive-fonts.conf /etc/fonts/conf.d/09-texlive.conf
+COPY deploy/docker/texlive-fonts.conf /etc/fonts/conf.d/09-texlive.conf
 RUN fc-cache -f
 
 # App-owned pandoc Lua filter (not user-supplied) that rewrites .svg image
 # references to .pdf, since every project SVG is pre-converted to PDF before
 # compile (architecture.md section 8) — without it, pandoc emits \includesvg for
 # .svg paths, which needs the svg package and Inkscape via shell-escape.
-COPY docker/pandoc-filters /opt/app/pandoc-filters
+COPY deploy/docker/pandoc-filters /opt/app/pandoc-filters
 
 # File->package index for lazy resolution (architecture.md section 6.2), built in
 # the toolchain stage from the pinned snapshot's full tlpdb.
@@ -190,7 +191,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --prod 
 COPY --from=backend-build /repo/apps/backend/dist apps/backend/dist
 COPY --from=frontend-build /repo/apps/frontend/dist/frontend/browser apps/backend/public
 
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV NODE_ENV=production

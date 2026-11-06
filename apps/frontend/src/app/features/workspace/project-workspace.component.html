@@ -2,11 +2,11 @@
   <header id="workspace-topbar" class="top">
     <app-brand />
     <span class="spacer"></span>
-    <div id="workspace-chip" class="chip" role="group" aria-label="Profil użytkownika">
+    <div id="workspace-chip" class="chip" role="group" aria-label="Aktywny workspace">
       <span class="av" aria-hidden="true">{{
         (profile()?.displayName ?? '??').slice(0, 2).toUpperCase()
       }}</span>
-      <b id="workspace-profile-name">{{ profile()?.displayName }}</b>
+      <b id="workspace-profile-name">Workspace: {{ profile()?.displayName }}</b>
       <button
         id="workspace-chip-logout"
         class="chip-x"
