@@ -6,6 +6,7 @@ import type { Profile } from './profile.entity.js';
 interface ProfileRow {
   id: string;
   display_name: string;
+  user_id: string | null;
   created_at: string;
 }
 
@@ -21,25 +22,27 @@ function toProfile(row: ProfileRow): Profile {
 export class ProfilesService {
   constructor(private readonly database: DatabaseService) {}
 
-  create(displayName: string): Profile {
+  create(displayName: string, userId: string): Profile {
     const id = randomUUID();
     this.database.db
-      .prepare('INSERT INTO profiles (id, display_name) VALUES (?, ?)')
-      .run(id, displayName);
-    return this.findById(id)!;
+      .prepare(
+        'INSERT INTO profiles (id, display_name, user_id) VALUES (?, ?, ?)',
+      )
+      .run(id, displayName, userId);
+    return this.findById(id, userId)!;
   }
 
-  findAll(): Profile[] {
+  findAll(userId: string): Profile[] {
     const rows = this.database.db
-      .prepare('SELECT * FROM profiles ORDER BY created_at')
-      .all() as unknown as ProfileRow[];
+      .prepare('SELECT * FROM profiles WHERE user_id = ? ORDER BY created_at')
+      .all(userId) as unknown as ProfileRow[];
     return rows.map(toProfile);
   }
 
-  findById(id: string): Profile | undefined {
+  findById(id: string, userId: string): Profile | undefined {
     const row = this.database.db
-      .prepare('SELECT * FROM profiles WHERE id = ?')
-      .get(id) as unknown as ProfileRow | undefined;
+      .prepare('SELECT * FROM profiles WHERE id = ? AND user_id = ?')
+      .get(id, userId) as unknown as ProfileRow | undefined;
     return row ? toProfile(row) : undefined;
   }
 
@@ -50,8 +53,8 @@ export class ProfilesService {
    * DATA_DIR). Returns the deleted projects' ids so the controller knows
    * which working directories to remove from disk.
    */
-  delete(id: string): string[] {
-    if (!this.findById(id)) {
+  delete(id: string, userId: string): string[] {
+    if (!this.findById(id, userId)) {
       throw new NotFoundException(`Profile ${id} not found`);
     }
     const projectRows = this.database.db

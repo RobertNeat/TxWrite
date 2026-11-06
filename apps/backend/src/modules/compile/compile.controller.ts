@@ -18,6 +18,8 @@ import {
 import { SynctexService, type SynctexEditResult } from './synctex.service.js';
 import { ExportService, type ExportFormat } from './export.service.js';
 import { attachmentDisposition } from '../../common/files/content-disposition.js';
+import { ProjectsService } from '../projects/projects.service.js';
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 
 const EXPORT_FORMATS: ReadonlySet<string> = new Set([
   'md',
@@ -40,13 +42,16 @@ export class CompileController {
     private readonly compileService: CompileService,
     private readonly synctexService: SynctexService,
     private readonly exportService: ExportService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   @Post('compile')
   async compile(
     @Param('id') id: string,
-    @Query('file') file?: string,
+    @Query('file') file: string | undefined,
+    @CurrentUserId() userId: string,
   ): Promise<CompileResultWithInstalls> {
+    this.projectsService.assertProjectAccess(id, userId);
     return this.compileService.compile(id, file);
   }
 
@@ -55,7 +60,9 @@ export class CompileController {
     @Param('id') id: string,
     @Query('file') file: string | undefined,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): void {
+    this.projectsService.assertProjectAccess(id, userId);
     const pdfPath = this.compileService.outputPdfPath(id, file);
     if (!existsSync(pdfPath)) {
       throw new NotFoundException('No compiled PDF for this project yet');
@@ -75,8 +82,10 @@ export class CompileController {
     @Query('page') page: string,
     @Query('x') x: string,
     @Query('y') y: string,
-    @Query('file') file?: string,
+    @Query('file') file: string | undefined,
+    @CurrentUserId() userId: string,
   ): Promise<SynctexEditResult> {
+    this.projectsService.assertProjectAccess(id, userId);
     return this.synctexService.edit(
       id,
       parseCoordinate('page', page),
@@ -92,7 +101,9 @@ export class CompileController {
     @Query('format') format: string,
     @Query('file') file: string | undefined,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): Promise<void> {
+    this.projectsService.assertProjectAccess(id, userId);
     if (!EXPORT_FORMATS.has(format)) {
       throw new BadRequestException(`Invalid format: ${format}`);
     }

@@ -12,6 +12,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../../core/api/api.service.js';
+import { AuthService } from '../../core/auth/auth.service.js';
 import { TranslatePipe } from '../../core/i18n/translate.pipe.js';
 import { BrandComponent } from '../../shared/brand.component.js';
 import { scrambleAll } from '../../shared/scramble.js';
@@ -27,12 +28,6 @@ const PLACEHOLDER_WORKSPACES = [
   'prezentacja-demo',
 ];
 
-/**
- * No real authentication: docs/project_assumptons/project_assumptions.md lists
- * it as a non-goal (profiles have no password/session). "Signing in" here
- * only reveals the already-selected profile's working directories (the left
- * panel), it does not check the email/password against anything.
- */
 @Component({
   selector: 'app-profile-picker',
   standalone: true,
@@ -42,13 +37,14 @@ const PLACEHOLDER_WORKSPACES = [
 })
 export class ProfilePickerComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
 
   protected readonly profiles = signal<Profile[]>([]);
   protected readonly projects = signal<Project[]>([]);
   protected readonly currentProfileId = signal<string | null>(null);
-  protected readonly loggedIn = signal(false);
+  protected readonly loggedIn = this.auth.isAuthenticated;
   protected readonly lastLogin = signal<Date | null>(null);
 
   protected readonly profilePopoverOpen = signal(false);
@@ -70,11 +66,15 @@ export class ProfilePickerComponent implements OnInit {
   protected readonly toastMessage = signal('');
   private toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  protected readonly registerMode = signal(false);
   protected loginEmail = '';
   protected loginPassword = '';
+  protected registerDisplayName = '';
   protected readonly loginPasswordVisible = signal(false);
   protected readonly loginEmailError = signal('');
   protected readonly loginPasswordError = signal('');
+  protected readonly registerDisplayNameError = signal('');
+  protected readonly loginFormError = signal('');
   protected readonly loggingIn = signal(false);
   protected readonly accountEmail = signal('');
   protected readonly accountName = signal('');
@@ -172,6 +172,17 @@ export class ProfilePickerComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    await this.auth.ready;
+    if (this.auth.isAuthenticated()) {
+      await this.loadWorkspace();
+      this.animateLeftPanelText();
+    }
+  }
+
+  private async loadWorkspace(): Promise<void> {
+    const user = this.auth.currentUser();
+    this.accountEmail.set(user?.email ?? '');
+    this.accountName.set(user?.displayName ?? '');
     const [profiles, projects] = await Promise.all([
       this.api.listProfiles(),
       this.api.listProjects(),
@@ -422,7 +433,7 @@ export class ProfilePickerComponent implements OnInit {
     this.toastTimeout = setTimeout(() => this.toastMessage.set(''), 3200);
   }
 
-  // ---------- login (right panel) — no real auth, see class doc ----------
+  // ---------- login / register (right panel) ----------
 
   togglePasswordVisibility(): void {
     this.loginPasswordVisible.update((v) => !v);
@@ -440,7 +451,17 @@ export class ProfilePickerComponent implements OnInit {
     this.showToast('Odzyskiwanie hasła nie jest dostępne w tej wersji.');
   }
 
-  submitLogin(): void {
+  switchToRegister(): void {
+    this.registerMode.set(true);
+    this.loginFormError.set('');
+  }
+
+  switchToLogin(): void {
+    this.registerMode.set(false);
+    this.loginFormError.set('');
+  }
+
+  private validateLoginForm(requireDisplayName: boolean): boolean {
     const email = this.loginEmail.trim();
     let ok = true;
     if (!email) {
@@ -453,35 +474,74 @@ export class ProfilePickerComponent implements OnInit {
     if (!this.loginPassword) {
       this.loginPasswordError.set('Podaj hasło.');
       ok = false;
+    } else if (requireDisplayName && this.loginPassword.length < 8) {
+      this.loginPasswordError.set('Hasło musi mieć co najmniej 8 znaków.');
+      ok = false;
     }
-    if (!ok) {
+    if (requireDisplayName && !this.registerDisplayName.trim()) {
+      this.registerDisplayNameError.set('Podaj nazwę wyświetlaną.');
+      ok = false;
+    }
+    return ok;
+  }
+
+  async submitLogin(): Promise<void> {
+    this.loginFormError.set('');
+    if (!this.validateLoginForm(false)) {
       return;
     }
     this.loggingIn.set(true);
-    setTimeout(() => this.completeLogin(email), 750);
+    try {
+      await this.auth.login(this.loginEmail.trim(), this.loginPassword);
+      await this.completeLogin();
+    } catch (error) {
+      this.loginFormError.set(
+        error instanceof Error ? error.message : 'Logowanie nie powiodło się.',
+      );
+    } finally {
+      this.loggingIn.set(false);
+    }
   }
 
-  private completeLogin(email: string): void {
-    this.accountEmail.set(email);
-    this.accountName.set(this.deriveNameFromEmail(email));
+  async submitRegister(): Promise<void> {
+    this.loginFormError.set('');
+    this.registerDisplayNameError.set('');
+    if (!this.validateLoginForm(true)) {
+      return;
+    }
+    this.loggingIn.set(true);
+    try {
+      await this.auth.register(
+        this.loginEmail.trim(),
+        this.loginPassword,
+        this.registerDisplayName.trim(),
+      );
+      await this.completeLogin();
+    } catch (error) {
+      this.loginFormError.set(
+        error instanceof Error ? error.message : 'Rejestracja nie powiodła się.',
+      );
+    } finally {
+      this.loggingIn.set(false);
+    }
+  }
+
+  private async completeLogin(): Promise<void> {
     this.lastLogin.set(new Date());
-    this.loggingIn.set(false);
-    this.loggedIn.set(true);
-    this.animateLeftPanelText();
-  }
-
-  logout(): void {
-    this.closeProfilePopover();
-    this.loggedIn.set(false);
     this.loginEmail = '';
     this.loginPassword = '';
+    this.registerDisplayName = '';
+    await this.loadWorkspace();
     this.animateLeftPanelText();
   }
 
-  private deriveNameFromEmail(email: string): string {
-    const local = email.split('@')[0] ?? '';
-    const words = local.split(/[._-]+/).filter(Boolean);
-    return words.map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || email;
+  async logout(): Promise<void> {
+    this.closeProfilePopover();
+    await this.auth.logout();
+    this.profiles.set([]);
+    this.projects.set([]);
+    this.currentProfileId.set(null);
+    this.animateLeftPanelText();
   }
 
   formattedLastLogin(): string {

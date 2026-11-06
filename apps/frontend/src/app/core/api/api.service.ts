@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { AuthService } from '../auth/auth.service.js';
 import type {
   CompileResult,
   Profile,
@@ -7,27 +8,47 @@ import type {
   SynctexEditResult,
 } from './api.types.js';
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`${init?.method ?? 'GET'} ${url} failed (${response.status}): ${body}`);
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return response.json() as Promise<T>;
-}
-
 @Injectable({ providedIn: 'root' })
 export class ApiService {
+  private readonly auth = inject(AuthService);
+
+  /**
+   * Cookie-based auth means fetch() already sends credentials same-origin —
+   * no Authorization header to attach. On a 401 (expired access-token
+   * cookie), refreshes once and retries the request exactly once.
+   */
+  private async request<T>(url: string, init?: RequestInit): Promise<T> {
+    let response = await fetch(url, init);
+    if (response.status === 401 && (await this.auth.refreshOnce()) === 'ok') {
+      response = await fetch(url, init);
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`${init?.method ?? 'GET'} ${url} failed (${response.status}): ${body}`);
+    }
+    if (response.status === 204) {
+      return undefined as T;
+    }
+    return response.json() as Promise<T>;
+  }
+
+  /** Refreshes first if the access token is near/past expiry — avoids a browser-driven
+   * download (no 401-retry possible) silently saving an error body as the file. */
+  async ensureFreshSession(): Promise<void> {
+    await this.auth.ready;
+    if (!this.auth.isAuthenticated()) return;
+    const response = await fetch('/api/auth/me');
+    if (response.status === 401) {
+      await this.auth.refreshOnce();
+    }
+  }
   // Profiles
   listProfiles(): Promise<Profile[]> {
-    return request('/api/profiles');
+    return this.request('/api/profiles');
   }
 
   createProfile(displayName: string): Promise<Profile> {
-    return request('/api/profiles', {
+    return this.request('/api/profiles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ displayName }),
@@ -35,16 +56,16 @@ export class ApiService {
   }
 
   deleteProfile(id: string): Promise<void> {
-    return request(`/api/profiles/${id}`, { method: 'DELETE' });
+    return this.request(`/api/profiles/${id}`, { method: 'DELETE' });
   }
 
   // Projects
   listProjects(): Promise<Project[]> {
-    return request('/api/projects');
+    return this.request('/api/projects');
   }
 
   getProject(id: string): Promise<Project> {
-    return request(`/api/projects/${id}`);
+    return this.request(`/api/projects/${id}`);
   }
 
   createProject(input: {
@@ -53,7 +74,7 @@ export class ApiService {
     engine?: string;
     mainFile?: string;
   }): Promise<Project> {
-    return request('/api/projects', {
+    return this.request('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -62,7 +83,7 @@ export class ApiService {
 
   importProjectZip(name: string, ownerProfileId: string, file: Blob): Promise<Project> {
     const params = new URLSearchParams({ name, ownerProfileId });
-    return request(`/api/projects/import?${params.toString()}`, {
+    return this.request(`/api/projects/import?${params.toString()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: file,
@@ -73,7 +94,7 @@ export class ApiService {
     id: string,
     input: { name?: string; engine?: string; mainFile?: string },
   ): Promise<Project> {
-    return request(`/api/projects/${id}`, {
+    return this.request(`/api/projects/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -81,12 +102,12 @@ export class ApiService {
   }
 
   deleteProject(id: string): Promise<void> {
-    return request(`/api/projects/${id}`, { method: 'DELETE' });
+    return this.request(`/api/projects/${id}`, { method: 'DELETE' });
   }
 
   // Files
   listFiles(projectId: string): Promise<ProjectFileEntry[]> {
-    return request(`/api/projects/${projectId}/files`);
+    return this.request(`/api/projects/${projectId}/files`);
   }
 
   /** Absolute, pasteable raw-file URL (GitHub-raw-link style) — the browser opens/downloads the actual resource directly. */
@@ -94,8 +115,16 @@ export class ApiService {
     return new URL(`/api/projects/${projectId}/files/${path}`, window.location.origin).toString();
   }
 
+  private async fetchWithRefresh(url: string, init?: RequestInit): Promise<Response> {
+    let response = await fetch(url, init);
+    if (response.status === 401 && (await this.auth.refreshOnce()) === 'ok') {
+      response = await fetch(url, init);
+    }
+    return response;
+  }
+
   async readFile(projectId: string, path: string): Promise<string> {
-    const response = await fetch(`/api/projects/${projectId}/files/${path}`);
+    const response = await this.fetchWithRefresh(`/api/projects/${projectId}/files/${path}`);
     if (!response.ok) {
       throw new Error(`Failed to read ${path} (${response.status})`);
     }
@@ -103,7 +132,7 @@ export class ApiService {
   }
 
   async writeFile(projectId: string, path: string, content: string | Blob): Promise<void> {
-    const response = await fetch(`/api/projects/${projectId}/files/${path}`, {
+    const response = await this.fetchWithRefresh(`/api/projects/${projectId}/files/${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/octet-stream' },
       body: content,
@@ -114,14 +143,16 @@ export class ApiService {
   }
 
   async deleteFile(projectId: string, path: string): Promise<void> {
-    const response = await fetch(`/api/projects/${projectId}/files/${path}`, { method: 'DELETE' });
+    const response = await this.fetchWithRefresh(`/api/projects/${projectId}/files/${path}`, {
+      method: 'DELETE',
+    });
     if (!response.ok) {
       throw new Error(`Failed to delete ${path} (${response.status})`);
     }
   }
 
   moveFile(projectId: string, from: string, to: string): Promise<{ from: string; to: string }> {
-    return request(`/api/projects/${projectId}/files/move`, {
+    return this.request(`/api/projects/${projectId}/files/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to }),
@@ -133,7 +164,7 @@ export class ApiService {
   }
 
   createDir(projectId: string, path: string): Promise<{ path: string }> {
-    return request(`/api/projects/${projectId}/dirs`, {
+    return this.request(`/api/projects/${projectId}/dirs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
@@ -143,7 +174,7 @@ export class ApiService {
   // Compile
   compile(projectId: string, targetFile?: string): Promise<CompileResult> {
     const query = targetFile ? `?file=${encodeURIComponent(targetFile)}` : '';
-    return request(`/api/projects/${projectId}/compile${query}`, { method: 'POST' });
+    return this.request(`/api/projects/${projectId}/compile${query}`, { method: 'POST' });
   }
 
   outputPdfUrl(projectId: string, targetFile?: string, cacheBust?: number): string {
@@ -166,7 +197,9 @@ export class ApiService {
     targetFile?: string,
   ): Promise<SynctexEditResult> {
     const fileParam = targetFile ? `&file=${encodeURIComponent(targetFile)}` : '';
-    return request(`/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}${fileParam}`);
+    return this.request(
+      `/api/projects/${projectId}/synctex?page=${page}&x=${x}&y=${y}${fileParam}`,
+    );
   }
 
   async exportDocument(
@@ -178,7 +211,9 @@ export class ApiService {
     if (targetFile) {
       params.set('file', targetFile);
     }
-    const response = await fetch(`/api/projects/${projectId}/export?${params.toString()}`);
+    const response = await this.fetchWithRefresh(
+      `/api/projects/${projectId}/export?${params.toString()}`,
+    );
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       throw new Error(`Export failed (${response.status}): ${body}`);

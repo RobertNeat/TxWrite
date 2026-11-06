@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -52,7 +53,28 @@ export interface UpdateProjectInput {
 export class ProjectsService {
   constructor(private readonly database: DatabaseService) {}
 
-  create(input: CreateProjectInput): Project {
+  /** Throws NotFound if the profile doesn't exist, Forbidden if it belongs to another user. */
+  private assertOwnsProfile(profileId: string, userId: string): void {
+    const row = this.database.db
+      .prepare('SELECT user_id FROM profiles WHERE id = ?')
+      .get(profileId) as unknown as { user_id: string | null } | undefined;
+    if (!row) {
+      throw new NotFoundException(`Profile ${profileId} not found`);
+    }
+    if (row.user_id !== userId) {
+      throw new ForbiddenException('Profile belongs to another user');
+    }
+  }
+
+  /** Used by every :projectId route (files, compile, export, synctex) to enforce ownership. */
+  assertProjectAccess(projectId: string, userId: string): Project {
+    const project = this.findByIdOrThrow(projectId);
+    this.assertOwnsProfile(project.ownerProfileId, userId);
+    return project;
+  }
+
+  create(input: CreateProjectInput, userId: string): Project {
+    this.assertOwnsProfile(input.ownerProfileId, userId);
     const engine = input.engine ?? 'pdflatex';
     const mainFile = input.mainFile ?? 'main.tex';
     if (!isValidEngine(engine)) {
@@ -72,10 +94,15 @@ export class ProjectsService {
     return this.findByIdOrThrow(id);
   }
 
-  findAll(): Project[] {
+  findAll(userId: string): Project[] {
     const rows = this.database.db
-      .prepare('SELECT * FROM projects ORDER BY created_at')
-      .all() as unknown as ProjectRow[];
+      .prepare(
+        `SELECT p.* FROM projects p
+         JOIN profiles pr ON pr.id = p.owner_profile_id
+         WHERE pr.user_id = ?
+         ORDER BY p.created_at`,
+      )
+      .all(userId) as unknown as ProjectRow[];
     return rows.map(toProject);
   }
 

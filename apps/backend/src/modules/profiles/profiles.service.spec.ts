@@ -22,22 +22,38 @@ describe('ProfilesService', () => {
 
     service = module.get(ProfilesService);
     database = module.get(DatabaseService);
+    database.db
+      .prepare('INSERT INTO users (id, display_name) VALUES (?, ?)')
+      .run('user-1', 'Test User');
+    database.db
+      .prepare('INSERT INTO users (id, display_name) VALUES (?, ?)')
+      .run('other-user', 'Other User');
   });
 
+  const userId = 'user-1';
+
   it('creates and finds a profile', () => {
-    const created = service.create('Robert');
+    const created = service.create('Robert', userId);
     expect(created.displayName).toBe('Robert');
-    expect(service.findById(created.id)).toEqual(created);
+    expect(service.findById(created.id, userId)).toEqual(created);
   });
 
   it('lists profiles in creation order', () => {
-    const first = service.create('First');
-    const second = service.create('Second');
-    expect(service.findAll().map((p) => p.id)).toEqual([first.id, second.id]);
+    const first = service.create('First', userId);
+    const second = service.create('Second', userId);
+    expect(service.findAll(userId).map((p) => p.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
   });
 
   it('returns undefined for an unknown id', () => {
-    expect(service.findById('does-not-exist')).toBeUndefined();
+    expect(service.findById('does-not-exist', userId)).toBeUndefined();
+  });
+
+  it("does not return another user's profile", () => {
+    const created = service.create('Robert', userId);
+    expect(service.findById(created.id, 'other-user')).toBeUndefined();
   });
 
   describe('delete', () => {
@@ -52,24 +68,24 @@ describe('ProfilesService', () => {
     }
 
     it('deletes the profile and returns the ids of its owned projects', () => {
-      const profile = service.create('Doomed');
+      const profile = service.create('Doomed', userId);
       const projectId = insertProject(profile.id);
 
-      const deletedProjectIds = service.delete(profile.id);
+      const deletedProjectIds = service.delete(profile.id, userId);
 
       expect(deletedProjectIds).toEqual([projectId]);
-      expect(service.findById(profile.id)).toBeUndefined();
+      expect(service.findById(profile.id, userId)).toBeUndefined();
     });
 
     it('does not touch other profiles or their projects', () => {
-      const keep = service.create('Keep');
+      const keep = service.create('Keep', userId);
       const keepProjectId = insertProject(keep.id);
-      const doomed = service.create('Doomed');
+      const doomed = service.create('Doomed', userId);
       insertProject(doomed.id);
 
-      service.delete(doomed.id);
+      service.delete(doomed.id, userId);
 
-      expect(service.findById(keep.id)).toEqual(keep);
+      expect(service.findById(keep.id, userId)).toEqual(keep);
       const remaining = database.db
         .prepare('SELECT id FROM projects')
         .all() as unknown as { id: string }[];
@@ -77,7 +93,9 @@ describe('ProfilesService', () => {
     });
 
     it('throws NotFoundException for an unknown id', () => {
-      expect(() => service.delete('does-not-exist')).toThrow(NotFoundException);
+      expect(() => service.delete('does-not-exist', userId)).toThrow(
+        NotFoundException,
+      );
     });
   });
 });

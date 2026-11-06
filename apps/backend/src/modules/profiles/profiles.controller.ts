@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ProfilesService } from './profiles.service.js';
 import { ProjectFilesService } from '../projects/project-files.service.js';
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import type { Profile } from './profile.entity.js';
 
 interface CreateProfileDto {
@@ -23,22 +24,28 @@ export class ProfilesController {
   ) {}
 
   @Get()
-  findAll(): Profile[] {
-    return this.profilesService.findAll();
+  findAll(@CurrentUserId() userId: string): Profile[] {
+    return this.profilesService.findAll(userId);
   }
 
   @Post()
-  create(@Body() dto: CreateProfileDto): Profile {
+  create(
+    @Body() dto: CreateProfileDto,
+    @CurrentUserId() userId: string,
+  ): Profile {
     const displayName = dto.displayName?.trim();
     if (!displayName) {
       throw new BadRequestException('displayName is required');
     }
-    return this.profilesService.create(displayName);
+    return this.profilesService.create(displayName, userId);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string): { id: string } {
-    const deletedProjectIds = this.profilesService.delete(id);
+  remove(
+    @Param('id') id: string,
+    @CurrentUserId() userId: string,
+  ): { id: string } {
+    const deletedProjectIds = this.profilesService.delete(id, userId);
     for (const projectId of deletedProjectIds) {
       this.projectFiles.deleteProjectDir(projectId);
     }

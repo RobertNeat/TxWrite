@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'node:path';
 import { AppConfigModule } from './common/config/app-config.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { EventsModule } from './modules/events/events.module.js';
 import { ProfilesModule } from './modules/profiles/profiles.module.js';
@@ -23,6 +24,7 @@ import { JobQueueModule } from './modules/job-queue/job-queue.module.js';
       // index.html so the Angular router can take over.
       serveStaticOptions: { fallthrough: true },
     }),
+    AuthModule,
     HealthModule,
     EventsModule,
     ProfilesModule,

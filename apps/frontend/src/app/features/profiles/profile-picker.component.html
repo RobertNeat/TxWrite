@@ -201,9 +201,41 @@
     <section id="profile-picker-right" class="right" aria-label="Logowanie i konto">
       @if (!loggedIn()) {
         <div class="rbody login">
-          <h2 tabindex="-1">Zaloguj się</h2>
-          <p class="sub">Wpisz dane konta, aby przejść do swoich profili i katalogów roboczych.</p>
-          <form id="loginForm" novalidate (ngSubmit)="submitLogin()">
+          @if (!registerMode()) {
+            <h2 tabindex="-1">Zaloguj się</h2>
+            <p class="sub">
+              Wpisz dane konta, aby przejść do swoich profili i katalogów roboczych.
+            </p>
+          } @else {
+            <h2 tabindex="-1">Utwórz konto</h2>
+            <p class="sub">Podaj dane, aby założyć nowe konto.</p>
+          }
+          <form
+            id="loginForm"
+            novalidate
+            (ngSubmit)="registerMode() ? submitRegister() : submitLogin()"
+          >
+            @if (registerMode()) {
+              <div class="fld">
+                <label for="displayName">Nazwa wyświetlana</label>
+                <input
+                  id="displayName"
+                  class="in"
+                  type="text"
+                  autocomplete="name"
+                  placeholder="Jan Kowalski"
+                  aria-describedby="displayNameErr"
+                  [attr.aria-invalid]="registerDisplayNameError() ? 'true' : null"
+                  [(ngModel)]="registerDisplayName"
+                  name="registerDisplayName"
+                  (input)="registerDisplayNameError.set('')"
+                />
+              </div>
+              <div id="displayNameErr" class="err" role="alert">
+                {{ registerDisplayNameError() }}
+              </div>
+            }
+
             <div class="fld">
               <label for="em">Adres e-mail</label>
               <input
@@ -228,7 +260,7 @@
                   id="pw"
                   class="in"
                   [type]="loginPasswordVisible() ? 'text' : 'password'"
-                  autocomplete="current-password"
+                  [attr.autocomplete]="registerMode() ? 'new-password' : 'current-password'"
                   aria-describedby="pwErr"
                   [attr.aria-invalid]="loginPasswordError() ? 'true' : null"
                   [(ngModel)]="loginPassword"
@@ -251,22 +283,40 @@
             </div>
             <div id="pwErr" class="err" role="alert">{{ loginPasswordError() }}</div>
 
-            <div class="opts">
-              <label class="chk"><input type="checkbox" checked />Zapamiętaj mnie</label>
-              <button id="forgot" class="lnk" type="button" (click)="requestForgotPassword()">
-                Nie pamiętasz hasła?
-              </button>
-            </div>
+            @if (!registerMode()) {
+              <div class="opts">
+                <button id="forgot" class="lnk" type="button" (click)="requestForgotPassword()">
+                  Nie pamiętasz hasła?
+                </button>
+              </div>
+            }
+
+            <div id="loginFormErr" class="err" role="alert">{{ loginFormError() }}</div>
 
             <button id="loginBtn" class="btn-p" type="submit" [disabled]="loggingIn()">
               @if (loggingIn()) {
-                <svg class="ic spin" aria-hidden="true"><use href="#i-spin" /></svg>Logowanie…
+                <svg class="ic spin" aria-hidden="true"><use href="#i-spin" /></svg>
+                {{ registerMode() ? 'Rejestrowanie…' : 'Logowanie…' }}
               } @else {
-                Zaloguj się
+                {{ registerMode() ? 'Zarejestruj się' : 'Zaloguj się' }}
               }
             </button>
           </form>
-          <p class="demo">Wersja demonstracyjna: wpisz dowolny adres e-mail i hasło.</p>
+          @if (!registerMode()) {
+            <p class="demo">
+              Nie masz konta?
+              <button id="switchToRegister" class="lnk" type="button" (click)="switchToRegister()">
+                Zarejestruj się
+              </button>
+            </p>
+          } @else {
+            <p class="demo">
+              Masz już konto?
+              <button id="switchToLogin" class="lnk" type="button" (click)="switchToLogin()">
+                Zaloguj się
+              </button>
+            </p>
+          }
         </div>
       } @else {
         <div class="rbody acct">

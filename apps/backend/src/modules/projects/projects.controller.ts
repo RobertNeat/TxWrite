@@ -18,6 +18,7 @@ import {
 } from './project-files.service.js';
 import { UnsafePathError } from '../../common/files/safe-path.js';
 import { attachmentDisposition } from '../../common/files/content-disposition.js';
+import { CurrentUserId } from '../auth/current-user.decorator.js';
 import type { Project } from './project.entity.js';
 
 interface CreateProjectDto {
@@ -64,23 +65,29 @@ export class ProjectsController {
   ) {}
 
   @Get()
-  findAll(): Project[] {
-    return this.projectsService.findAll();
+  findAll(@CurrentUserId() userId: string): Project[] {
+    return this.projectsService.findAll(userId);
   }
 
   @Post()
-  create(@Body() dto: CreateProjectDto): Project {
+  create(
+    @Body() dto: CreateProjectDto,
+    @CurrentUserId() userId: string,
+  ): Project {
     const name = dto.name?.trim();
     const ownerProfileId = dto.ownerProfileId?.trim();
     if (!name || !ownerProfileId) {
       throw new BadRequestException('name and ownerProfileId are required');
     }
-    const project = this.projectsService.create({
-      name,
-      ownerProfileId,
-      engine: dto.engine,
-      mainFile: dto.mainFile,
-    });
+    const project = this.projectsService.create(
+      {
+        name,
+        ownerProfileId,
+        engine: dto.engine,
+        mainFile: dto.mainFile,
+      },
+      userId,
+    );
     this.projectFiles.createProjectDir(project.id);
     return project;
   }
@@ -89,6 +96,7 @@ export class ProjectsController {
   async importZip(
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): Promise<void> {
     const query = request.query as { ownerProfileId?: string; name?: string };
     const ownerProfileId = query.ownerProfileId?.trim();
@@ -103,7 +111,10 @@ export class ProjectsController {
       );
     }
 
-    const project = this.projectsService.create({ name, ownerProfileId });
+    const project = this.projectsService.create(
+      { name, ownerProfileId },
+      userId,
+    );
     this.projectFiles.createProjectDir(project.id);
     try {
       await this.projectFiles.importArchive(project.id, body);
@@ -116,25 +127,37 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string): Project {
-    return this.projectsService.findByIdOrThrow(id);
+  findOne(@Param('id') id: string, @CurrentUserId() userId: string): Project {
+    return this.projectsService.assertProjectAccess(id, userId);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProjectDto): Project {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProjectDto,
+    @CurrentUserId() userId: string,
+  ): Project {
+    this.projectsService.assertProjectAccess(id, userId);
     return this.projectsService.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string): { id: string } {
+  remove(
+    @Param('id') id: string,
+    @CurrentUserId() userId: string,
+  ): { id: string } {
+    this.projectsService.assertProjectAccess(id, userId);
     this.projectsService.delete(id);
     this.projectFiles.deleteProjectDir(id);
     return { id };
   }
 
   @Get(':id/files')
-  listFiles(@Param('id') id: string): ProjectFileEntry[] {
-    this.projectsService.findByIdOrThrow(id);
+  listFiles(
+    @Param('id') id: string,
+    @CurrentUserId() userId: string,
+  ): ProjectFileEntry[] {
+    this.projectsService.assertProjectAccess(id, userId);
     return this.projectFiles.listFiles(id);
   }
 
@@ -142,8 +165,9 @@ export class ProjectsController {
   moveFile(
     @Param('id') id: string,
     @Body() dto: MoveFileDto,
+    @CurrentUserId() userId: string,
   ): { from: string; to: string } {
-    this.projectsService.findByIdOrThrow(id);
+    this.projectsService.assertProjectAccess(id, userId);
     const from = dto.from?.trim();
     const to = dto.to?.trim();
     if (!from || !to) {
@@ -157,8 +181,9 @@ export class ProjectsController {
   createDir(
     @Param('id') id: string,
     @Body() dto: CreateDirDto,
+    @CurrentUserId() userId: string,
   ): { path: string } {
-    this.projectsService.findByIdOrThrow(id);
+    this.projectsService.assertProjectAccess(id, userId);
     const path = dto.path?.trim();
     if (!path) {
       throw new BadRequestException('path is required');
@@ -168,8 +193,12 @@ export class ProjectsController {
   }
 
   @Get(':id/export.zip')
-  exportZip(@Param('id') id: string, @Res() reply: FastifyReply): void {
-    const project = this.projectsService.findByIdOrThrow(id);
+  exportZip(
+    @Param('id') id: string,
+    @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
+  ): void {
+    const project = this.projectsService.assertProjectAccess(id, userId);
     const archive = this.projectFiles.createArchive(id);
     reply
       .header('Content-Type', 'application/zip')
@@ -182,8 +211,9 @@ export class ProjectsController {
     @Param('id') id: string,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): void {
-    this.projectsService.findByIdOrThrow(id);
+    this.projectsService.assertProjectAccess(id, userId);
     const relativePath = this.extractFilePath(request.url, id);
     const content = this.wrapUnsafePath(() =>
       this.projectFiles.readFile(id, relativePath),
@@ -196,8 +226,9 @@ export class ProjectsController {
     @Param('id') id: string,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): void {
-    this.projectsService.findByIdOrThrow(id);
+    this.projectsService.assertProjectAccess(id, userId);
     const relativePath = this.extractFilePath(request.url, id);
     const body = request.body;
     if (!Buffer.isBuffer(body)) {
@@ -216,8 +247,9 @@ export class ProjectsController {
     @Param('id') id: string,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
+    @CurrentUserId() userId: string,
   ): void {
-    this.projectsService.findByIdOrThrow(id);
+    this.projectsService.assertProjectAccess(id, userId);
     const relativePath = this.extractFilePath(request.url, id);
     this.wrapUnsafePath(() => this.projectFiles.deleteFile(id, relativePath));
     reply.status(204).send();

@@ -548,6 +548,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     localStorage.setItem(LAST_EXPORT_FORMAT_KEY, key);
 
     if (key === 'zip') {
+      await this.api.ensureFreshSession();
       this.downloadUrl(this.api.exportZipUrl(this.projectId()));
       return;
     }
@@ -559,6 +560,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
           return;
         }
       }
+      await this.api.ensureFreshSession();
       this.downloadUrl(this.api.outputPdfUrl(this.projectId(), this.compiledTarget, Date.now()));
       return;
     }

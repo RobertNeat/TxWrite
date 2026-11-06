@@ -16,7 +16,7 @@ A "download and don't worry about it" alternative to Overleaf. The user starts o
 
 ### Non-goals (initial version)
 - Real-time multi-user collaboration.
-- Real authentication, permissions or hosted multi-tenant use.
+- Hosted multi-tenant SaaS operation (the app is still meant to be self-hosted by one party).
 - Version history, comments or track changes.
 - Full Overleaf feature parity.
 
@@ -33,11 +33,16 @@ The gap: a **small image + lazy package/font resolution + Markdown and LaTeX und
 
 ## 3. Core concepts
 
-### 3.1 Users (initial: simple profiles)
-- A user is a simple profile entry (display name, id). No password, no session security.
-- Profiles are accessible by anyone with access to the app. This is a convenience grouping, not a security boundary.
+### 3.1 Users and profiles
+- A user account has real authentication: email + password (local login) via JWT access/refresh
+  tokens in httpOnly cookies. Passwords are hashed with Node's built-in `crypto.scrypt`.
+  `user_identities` is provider-agnostic (local login is `provider='local'`) so OIDC providers
+  (Google, Keycloak) can be added later without a schema change — see
+  `docs/contracts/milestones.md`.
+- A profile is a convenience grouping of projects (display name, id) owned by exactly one user.
+  Profiles are not themselves a security boundary beyond the user that owns them — every
+  profile/project/file/compile/export endpoint is scoped to the authenticated user's own profiles.
 - Each project belongs to one profile.
-- Real authentication is a possible later phase and must not be assumed by the data model.
 
 ### 3.2 Projects
 - A project is a folder of files plus metadata (name, owner profile, engine, main file, template origin).
@@ -105,7 +110,7 @@ Assumption: LaTeX and pandoc templates are **not fully interchangeable** (a pand
 
 ## 7. Initial scope (MVP)
 
-- Simple profiles.
+- Real authentication (JWT login/registration) and profiles scoped per user.
 - Project CRUD and file upload (including images), zip import and export.
 - Editor, PDF preview and compile log in the browser.
 - `.tex` compile through `latexmk` with engine selection.
@@ -117,7 +122,7 @@ Assumption: LaTeX and pandoc templates are **not fully interchangeable** (a pand
 - Proactive prefetching while the user edits.
 - Lazy font fetching from Google Fonts.
 - Wrapper templates and a template gallery.
-- Real authentication.
+- OIDC login (Google, Keycloak) on top of the existing local JWT auth — see `docs/contracts/milestones.md`.
 
 ## 8. Open questions
 
