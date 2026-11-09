@@ -151,6 +151,16 @@ export class ApiService {
     }
   }
 
+  /** Proactive prefetch (architecture.md section 6.4): reports current editor content so the
+   * backend can install referenced packages/fonts in the background before compile is pressed. */
+  scan(projectId: string, file: string, content: string): Promise<{ files: string[] }> {
+    return this.request(`/api/projects/${projectId}/scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file, content }),
+    });
+  }
+
   moveFile(projectId: string, from: string, to: string): Promise<{ from: string; to: string }> {
     return this.request(`/api/projects/${projectId}/files/move`, {
       method: 'POST',

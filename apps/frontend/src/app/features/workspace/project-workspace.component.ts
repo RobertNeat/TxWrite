@@ -257,6 +257,30 @@ export class ProjectWorkspaceComponent implements OnInit {
 
   onEditorContentChanged(payload: { path: string; content: string } | null): void {
     this.editorContent.set(payload);
+    this.scheduleScan(payload);
+  }
+
+  private scanTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Debounced background report to the prefetch watcher (architecture.md
+   * section 6.4) — lets the backend start installing a newly referenced
+   * package/font before the user presses compile. Fire-and-forget: a failed
+   * scan has no user-visible effect beyond losing that prefetch opportunity,
+   * the reactive retry loop on compile still covers it.
+   */
+  private scheduleScan(payload: { path: string; content: string } | null): void {
+    if (this.scanTimeout) {
+      clearTimeout(this.scanTimeout);
+      this.scanTimeout = null;
+    }
+    if (!payload || !/\.(tex|md)$/i.test(payload.path)) {
+      return;
+    }
+    const { path, content } = payload;
+    this.scanTimeout = setTimeout(() => {
+      this.api.scan(this.projectId(), path, content).catch(() => {});
+    }, 800);
   }
 
   private static readonly STALE_EXTENSIONS = new Set(['tex', 'sty', 'cls', 'bib', 'md']);
