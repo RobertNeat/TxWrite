@@ -6,8 +6,20 @@ Fixed in feature/frontend-wiring: the frontend's `AppEvent`/`AppEventType` now l
 in `apps/frontend/src/app/core/api/api.types.ts`, manually mirroring the backend's
 `apps/backend/src/modules/events/event-bus.service.ts` union. Still no
 `packages/shared` workspace package — both sides must be updated together when the
-union changes. `font.*` events remain unimplemented (font resolution is postponed —
-see plan.md).
+union changes.
+
+## `install.*`/`font.*` SSE events, `CompileResult.installs`/`.fontResolutions` — backend emits, frontend doesn't render
+
+Both `install.*` (packages) and `font.*` (fonts, added this session) events are
+emitted by the backend (`ResourceResolverService`/`FontResolverService`) and
+typed on the frontend (`AppEventType`, `CompileResult.installs`/
+`.fontResolutions` in `api.types.ts`), but nothing in the frontend subscribes
+to them or renders them — `StatusBarComponent` only shows connect/disconnect,
+and `CompilePanelComponent` only renders `diagnostics`, not `installs`/
+`fontResolutions`. A user sees no UI feedback while a package or font installs
+in the background (prefetch) or during a compile retry — only the eventual
+compile success/failure. Not addressed this session; pick a UI treatment
+(toast, status-bar line, or a compile-panel section) before closing this.
 
 ## Profiles and Projects CRUD + file endpoints
 
@@ -93,8 +105,8 @@ feature/projects-and-compile branch:
   `\input`/`\include` expanded, from `.tex` — mockup: "jeden plik z
   dołączonymi rozdziałami"); any other target format converts via pandoc
   (`-f latex`/`-f markdown`). HTML uses `--standalone --embed-resources
-  --mathml`. Every pandoc invocation runs `docker/pandoc-filters/
-  safe-images.lua`, which strips any Image whose src is a remote URL,
+--mathml`. Every pandoc invocation runs `docker/pandoc-filters/
+safe-images.lua`, which strips any Image whose src is a remote URL,
   absolute path, or contains `..` — without it, `--embed-resources`/docx's
   image embedding will fetch remote URLs (SSRF) or inline arbitrary local
   files by absolute path as base64 (verified both empirically against

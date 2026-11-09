@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.11.6)  9 NOV 2026 10:46
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.11.6)  9 NOV 2026 11:04
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -23,13 +23,10 @@ File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
 \abovecaptionskip=\skip49
 \belowcaptionskip=\skip50
 \bibindent=\dimen150
-)
-(/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec.sty
+) (/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec.sty
 Package: fontspec 2026/08/11 v2.9h Font selection for XeLaTeX and LuaLaTeX
-
-(/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
-Package: fontspec-xetex 2026/08/11 v2.9h Font selection for XeLaTeX and LuaLaTe
-X
+ (/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+Package: fontspec-xetex 2026/08/11 v2.9h Font selection for XeLaTeX and LuaLaTeX
 \l__fontspec_script_int=\count281
 \l__fontspec_language_int=\count282
 \l__fontspec_strnum_int=\count283
@@ -44,11 +41,9 @@ X
 \l__fontspec_tmpa_dim=\dimen151
 \l__fontspec_tmpb_dim=\dimen152
 \l__fontspec_tmpc_dim=\dimen153
-
-(/opt/texlive/texmf-dist/tex/latex/base/fontenc.sty
+ (/opt/texlive/texmf-dist/tex/latex/base/fontenc.sty
 Package: fontenc 2025/07/18 v2.1d Standard LaTeX package
-)
-(/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+) (/opt/texlive/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
 
 ./m.tex:4: Package fontspec Error: 
 (fontspec)                The font "ThisFontDoesNotExistAnywhere" cannot be
@@ -142,8 +137,7 @@ Package fontspec Info:
 (fontspec)             - 'small caps'  (m/sc) with NFSS spec.:
 (fontspec)             <->"ThisFontDoesNotExistAnywhere"
 
-./m.tex:4: Font TU/ThisFontDoesNotExistAnywhere(0)/m/n/10=ThisFontDoesNotExistA
-nywhere at 10.0pt not loadable: Metric (TFM) file or installed font not found.
+./m.tex:4: Font TU/ThisFontDoesNotExistAnywhere(0)/m/n/10=ThisFontDoesNotExistAnywhere at 10.0pt not loadable: Metric (TFM) file or installed font not found.
 <to be read again> 
                    relax 
 l.4 \begin
@@ -159,8 +153,7 @@ File: l3backend-xetex.def 2026-09-09 L3 backend support: XeTeX
 \g__graphics_track_int=\count292
 \g__pdfannot_backend_int=\count293
 \g__pdfannot_backend_link_int=\count294
-)
-No file m.aux.
+) (./m.aux)
 \openout1 = `m.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 4.
@@ -214,36 +207,30 @@ LaTeX Font Info:    Redeclaring symbol font `operators' on input line 4.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
 (Font)              `operators' in the math version `normal' on input line 4.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmr/m/n --> TU/ThisFontDoesNotExistAnywhere(0)/m/n 
-on input line 4.
+(Font)                  OT1/cmr/m/n --> TU/ThisFontDoesNotExistAnywhere(0)/m/n on input line 4.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
 (Font)              `operators' in the math version `bold' on input line 4.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmr/bx/n --> TU/ThisFontDoesNotExistAnywhere(0)/m/n
- on input line 4.
+(Font)                  OT1/cmr/bx/n --> TU/ThisFontDoesNotExistAnywhere(0)/m/n on input line 4.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  TU/ThisFontDoesNotExistAnywhere(0)/m/n --> TU/ThisFontD
-oesNotExistAnywhere(0)/m/n on input line 4.
+(Font)                  TU/ThisFontDoesNotExistAnywhere(0)/m/n --> TU/ThisFontDoesNotExistAnywhere(0)/m/n on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  OT1/cmr/m/it --> TU/ThisFontDoesNotExistAnywhere(0)/m/i
-t on input line 4.
+(Font)                  OT1/cmr/m/it --> TU/ThisFontDoesNotExistAnywhere(0)/m/it on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  OT1/cmr/bx/n --> TU/ThisFontDoesNotExistAnywhere(0)/b/n
- on input line 4.
+(Font)                  OT1/cmr/bx/n --> TU/ThisFontDoesNotExistAnywhere(0)/b/n on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
 (Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
 (Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 4.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  TU/ThisFontDoesNotExistAnywhere(0)/m/n --> TU/ThisFontD
-oesNotExistAnywhere(0)/b/n on input line 4.
+(Font)                  TU/ThisFontDoesNotExistAnywhere(0)/m/n --> TU/ThisFontDoesNotExistAnywhere(0)/b/n on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/cmr/bx/it --> TU/ThisFontDoesNotExistAnywhere(0)/b/
-it on input line 4.
+(Font)                  OT1/cmr/bx/it --> TU/ThisFontDoesNotExistAnywhere(0)/b/it on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
 (Font)                  OT1/cmss/bx/n --> TU/lmss/b/n on input line 4.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 (Font)                  OT1/cmtt/m/n --> TU/lmtt/b/n on input line 4.
+
 Missing character: There is no H ("48) in font nullfont!
 Missing character: There is no e ("65) in font nullfont!
 Missing character: There is no l ("6C) in font nullfont!
@@ -265,12 +252,12 @@ L3 programming layer <2026-09-09>
  ***********
  ) 
 Here is how much of TeX's memory you used:
- 2797 strings out of 469647
- 93684 string characters out of 5465430
+ 2800 strings out of 469647
+ 93714 string characters out of 5465430
  528998 words of memory out of 5000000
- 31931 multiletter control sequences out of 15000+600000
+ 31932 multiletter control sequences out of 15000+600000
  628505 words of font info for 42 fonts, out of 8000000 for 9000
  56 hyphenation exceptions out of 8191
  60i,5n,80p,265b,239s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on m.pdf (1 page).
+Output written on m.xdv (1 page, 180 bytes).

@@ -45,19 +45,29 @@ const TIKZ_LIBRARY_FILENAME = /files named (\S+\.code\.tex)/;
 const BARE_ERROR = /^! (.+)$/;
 
 // Matches fontspec's missing-font error (architecture.md section 7, step detection).
-// Verified against real xelatex and lualatex logs (identical message from both,
-// since both go through the fontspec package): the file:line prefix line itself
-// ("<file>:<line>: Package fontspec Error: ") carries no font name — it's on the
-// next physical line, wrapped with a "(fontspec)" continuation prefix:
+// Verified against real xelatex and lualatex logs, including under the exact
+// latexmk invocation CompileRunnerService uses (max_print_line=10000 does not
+// affect fontspec's own internal message wrapping, unlike TeX's native line
+// wrap elsewhere in this file — verified separately). Identical message from
+// both engines (both go through the fontspec package): the file:line prefix
+// line itself ("<file>:<line>: Package fontspec Error: ") carries no font
+// name — it's on the next physical line(s), wrapped with a "(fontspec)"
+// continuation prefix:
 //   ./main.tex:4: Package fontspec Error:
 //   (fontspec)                The font "ThisFontDoesNotExistAnywhere" cannot be
 //   (fontspec)                found; this may be but usually is not a fontspec
+// A long/multi-word font name can itself be split across two "(fontspec)"
+// lines by this wrapping (verified: "This Really Quite Long Font Name That
+// Does Not Exist Anywhere" split mid-name with no closing quote on the first
+// line), so the quoted name is matched against the joined text of every
+// consecutive "(fontspec)" continuation line, not a single line.
 // Deliberately not parsed from the later "Font ...=NAME at Npt not loadable"
 // line: its NAME is prefixed with engine-specific internal syntax
 // (xelatex: "=NAME at 10.0pt"; lualatex: "name:NAME:mode=node;..."), unlike this
 // message's quoted, verbatim font name.
 const FONTSPEC_ERROR = /^(?:.+?:\d+: )?Package fontspec Error: ?$/;
-const FONTSPEC_FONT_NAME = /^\(fontspec\)\s+The font "([^"]+)" cannot be/;
+const FONTSPEC_CONTINUATION = /^\(fontspec\)\s*(.*)$/;
+const FONTSPEC_FONT_NAME = /The font "([^"]+)" cannot be/;
 
 // TeX's own generic follow-up boilerplate after a real error has already been
 // reported (with its own message, usually via FILE_LINE_ERROR/BARE_ERROR just
@@ -106,9 +116,24 @@ export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
     // Checked before FILE_LINE_ERROR: "<file>:<line>: Package fontspec Error: "
     // itself matches that generic pattern too (a non-empty "message" of
     // "Package fontspec Error: "), but the actual font name is on the next
-    // physical line, not this one.
+    // physical line, not this one. Only the "font not found" case is handled
+    // specially — a `continue` for every fontspec error regardless of match
+    // would silently swallow any other fontspec error (e.g. an unrelated
+    // fontspec usage mistake) with zero diagnostics, which is worse than
+    // falling through to FILE_LINE_ERROR's generic (if less specific)
+    // handling for anything this doesn't recognize.
     if (FONTSPEC_ERROR.test(line)) {
-      const fontMatch = FONTSPEC_FONT_NAME.exec(lines[i + 1] ?? '');
+      let continuation = '';
+      let j = i + 1;
+      while (j < lines.length) {
+        const continuationMatch = FONTSPEC_CONTINUATION.exec(lines[j]);
+        if (!continuationMatch) {
+          break;
+        }
+        continuation += `${continuationMatch[1]} `;
+        j++;
+      }
+      const fontMatch = FONTSPEC_FONT_NAME.exec(continuation);
       if (fontMatch) {
         const fontName = fontMatch[1];
         if (!seenMissingFonts.has(fontName)) {
@@ -120,8 +145,8 @@ export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
           errorType: 'Package fontspec Error',
           message: `The font "${fontName}" cannot be found.`,
         });
+        continue;
       }
-      continue;
     }
 
     const missingFileMatch = MISSING_FILE.exec(line);

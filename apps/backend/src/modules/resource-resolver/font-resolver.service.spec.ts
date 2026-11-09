@@ -73,6 +73,22 @@ describe('FontResolverService', () => {
     expect(events).toEqual(['font.resolving', 'font.resolved']);
   });
 
+  it('resolves a named-weight variant even though fc-match returns a comma-separated family list', async () => {
+    // Verified empirically: fc-match --format=%{family} for a named-weight
+    // variant like "EB Garamond SemiBold" returns the base family and the
+    // specific one together, comma-separated — "EB Garamond,EB Garamond
+    // SemiBold" — not just the one that was queried.
+    queueSpawns(fakeChild(0, 'EB Garamond,EB Garamond SemiBold'));
+    const { service } = makeService('ebgaramond');
+
+    const outcome = await service.resolveFont('EB Garamond SemiBold');
+
+    expect(outcome).toEqual({
+      fontName: 'EB Garamond SemiBold',
+      resolved: true,
+    });
+  });
+
   it('does not treat an fc-match fallback family as a match (fc-match never reports "not found")', async () => {
     // fc-match always exits 0 with some fallback family (e.g. DejaVu Sans) —
     // verified empirically against the real toolchain — so a hit only counts

@@ -75,6 +75,18 @@ export class PackageIndexService implements OnModuleInit {
    * to "Source Sans 3") correctly falls through to section 7 step 4/5.
    */
   packageProvidingFont(fontName: string): string | undefined {
+    // Defensive: in practice fontspec's own error message always strips any
+    // file extension before this ever reaches here (verified: \setmainfont
+    // with an explicit Extension= key still reports the bare stem, e.g.
+    // "NoSuchFile-Regular" not "NoSuchFile-Regular.otf") — but a caller
+    // passing a literal filename should still resolve via the exact index
+    // rather than the normalized one treating ".otf" as part of the name.
+    if (FONT_FILE.test(fontName)) {
+      const exact = this.index[fontName];
+      if (exact) {
+        return exact;
+      }
+    }
     return this.fontIndex[normalizeFontName(fontName)];
   }
 

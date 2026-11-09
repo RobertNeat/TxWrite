@@ -188,7 +188,7 @@ Prefetch is an optimization. Reactive mode remains the source of truth.
 
 Fonts use the same detect, resolve, install, retry shape.
 
-**Detection** (from log): `The font "X" cannot be found`, luaotfload "cannot be found", xelatex "not loadable".
+**Detection (from log) — implemented** (`log-parser.ts`'s `FONTSPEC_ERROR`/`FONTSPEC_FONT_NAME`): fontspec's `Package fontspec Error: ... The font "X" cannot be found` (identical from both xelatex and lualatex, since both route font selection through the `fontspec` package) — built from real captured logs, not the message's own paraphrase (see `__fixtures__/missing-font*.log`). The font name can itself be wrapped across two `(fontspec)` continuation lines for a long/multi-word name; the parser joins them before matching. Deliberately not parsed from the later low-level "Font ...=X at Npt not loadable"/"not loadable: metric data not found" line — its font name carries engine-specific internal syntax (`name:X:mode=...` for lualatex, `=X at 10.0pt` for xelatex) rather than the fontspec message's clean quoted name.
 
 **Resolution chain:**
 
@@ -240,6 +240,6 @@ compose`/orchestrators would see the container as briefly unhealthy right
 
 ## 10. Events and observability
 
-- SSE stream carries: `compile.started`, `compile.finished`, `install.queued`, `install.started`, `install.finished`, `install.failed`, `font.*`.
+- SSE stream carries: `compile.started`, `compile.finished`, `install.queued`, `install.started`, `install.finished`, `install.failed`, `font.resolving`, `font.resolved`, `font.failed` — all implemented and emitted, but see §3's `/api/events` note and `docs/contracts/api.md`: nothing in the frontend subscribes to or renders `install.*`/`font.*` yet (only the SSE connection status itself is shown).
 - Install and compile logs are stored per project for debugging.
-- A simple health endpoint reports toolchain versions and cache size.
+- `GET /api/health` returns app status only — see §3; it does not report toolchain versions or cache size.

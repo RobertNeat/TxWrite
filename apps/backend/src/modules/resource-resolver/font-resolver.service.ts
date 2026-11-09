@@ -230,10 +230,19 @@ export class FontResolverService {
   }
 }
 
-/** fc-match's --format output has no quoting to strip, but is always newline-free; compare case-sensitively since TeX Live font family names are. */
+/**
+ * fc-match's --format=%{family} output has no quoting to strip, but is a
+ * *comma-separated list* of every family name the matched font registers
+ * under, not just one — verified empirically: querying a named-weight
+ * variant like "EB Garamond SemiBold" returns "EB Garamond,EB Garamond
+ * SemiBold" (the base family first, then the specific one), while querying
+ * the base family alone returns just "EB Garamond". A hit on any entry in
+ * that list counts as a match, so both query forms resolve correctly.
+ */
 function matchesRequestedFamily(
   fcMatchOutput: string,
   fontName: string,
 ): boolean {
-  return fcMatchOutput.trim() === fontName.trim();
+  const requested = fontName.trim();
+  return fcMatchOutput.split(',').some((family) => family.trim() === requested);
 }

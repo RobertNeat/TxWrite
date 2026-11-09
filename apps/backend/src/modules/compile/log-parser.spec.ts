@@ -33,6 +33,36 @@ describe('parseCompileLog', () => {
     ]);
   });
 
+  it('still reports a diagnostic for a fontspec error line that is not the font-not-found case', () => {
+    // A bare "Package fontspec Error:" line not followed by a recognized
+    // "(fontspec) The font ... cannot be found" continuation must not be
+    // silently swallowed with zero diagnostics — it should fall through to
+    // the generic file:line handling instead.
+    const log = [
+      './main.tex:4: Package fontspec Error: ',
+      '(fontspec)                Some other fontspec problem unrelated to a',
+      '(fontspec)                missing font.',
+    ].join('\n');
+    const result = parseCompileLog(log, false);
+    expect(result.missingFonts).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it('extracts a missing font name that fontspec itself wraps across two continuation lines', () => {
+    // Captured with a long, multi-word font name: fontspec's own internal
+    // message wrapping (independent of max_print_line) splits the quoted
+    // name itself across two "(fontspec)" lines in this case.
+    const log = readFixture('missing-font-wrapped.log');
+    const result = parseCompileLog(log, true);
+    expect(result.success).toBe(false);
+    expect(result.missingFonts).toEqual([
+      {
+        fontName:
+          'This Really Quite Long Font Name That Does Not Exist Anywhere',
+      },
+    ]);
+  });
+
   it('extracts file:line diagnostics from a real syntax-error log', () => {
     const log = readFixture('syntax-error.log');
     const result = parseCompileLog(log, false);

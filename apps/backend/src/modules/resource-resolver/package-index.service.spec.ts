@@ -85,4 +85,13 @@ describe('PackageIndexService', () => {
     const service = await makeService({ 'tikz.sty': 'pgf' });
     expect(service.packageProvidingFont('tikz')).toBeUndefined();
   });
+
+  it('resolves a literal filename via the exact index rather than normalizing off the extension', async () => {
+    const service = await makeService({
+      'EBGaramond-Regular.otf': 'ebgaramond',
+    });
+    expect(service.packageProvidingFont('EBGaramond-Regular.otf')).toBe(
+      'ebgaramond',
+    );
+  });
 });
