@@ -11,7 +11,7 @@
 >
   @for (row of rows(); track isNewEntryRow(row) ? 'new-' + row.newEntryParentPath : row.node.path) {
     @if (isNewEntryRow(row)) {
-      <div class="row" [style.--d]="row.depth">
+      <div id="file-tree-new-entry-row" class="row" [style.--d]="row.depth">
         <span class="tw"></span>
         @if (newEntryIsDir()) {
           <svg class="ic" aria-hidden="true"><use href="#i-folder" /></svg>
@@ -84,7 +84,7 @@
           <span class="nm">{{ row.node.name }}</span>
         }
         @if (isMainFile(row.node.path)) {
-          <span class="pill">główny</span>
+          <span [id]="'file-tree-pill-' + row.node.path" class="pill">główny</span>
         }
         <span class="acts">
           <button
@@ -112,4 +112,6 @@
     }
   }
 </div>
-<div class="tree-hint">Przeciągnij pliki, aby je przenieść. Upuść pliki z dysku, aby wgrać.</div>
+<div id="file-tree-hint" class="tree-hint">
+  Przeciągnij pliki, aby je przenieść. Upuść pliki z dysku, aby wgrać.
+</div>

@@ -37,7 +37,7 @@
           </button>
         </div>
 
-        <div class="lcap">
+        <div id="workspace-count-label" class="lcap">
           <span>Katalogi robocze</span>
           <span class="cn">{{ displayWorkspaceNames().length }}</span>
         </div>
@@ -45,7 +45,7 @@
         @if (!loggedIn()) {
           <ul id="workspace-list-placeholder" class="wlist">
             @for (name of displayWorkspaceNames(); track name) {
-              <li class="card">
+              <li [id]="'workspace-placeholder-' + name" class="card">
                 <span class="open">
                   <span class="fi"
                     ><svg class="ic lg" aria-hidden="true"><use href="#i-folder" /></svg
@@ -114,7 +114,13 @@
                     aria-label="Zarządzaj katalogiem"
                     (click)="$event.stopPropagation()"
                   >
-                    <button class="mi" role="menuitem" type="button" (click)="startRename(project)">
+                    <button
+                      [id]="'workspace-rename-btn-' + project.id"
+                      class="mi"
+                      role="menuitem"
+                      type="button"
+                      (click)="startRename(project)"
+                    >
                       <svg class="ic" aria-hidden="true"><use href="#i-pencil" /></svg>Edytuj nazwę
                     </button>
                     <a
@@ -130,6 +136,7 @@
                     </a>
                     <div class="mi-sep" role="separator"></div>
                     <button
+                      [id]="'workspace-delete-' + project.id"
                       class="mi danger"
                       role="menuitem"
                       type="button"
@@ -143,7 +150,7 @@
             }
           </ul>
         } @else {
-          <div class="wlist">
+          <div id="workspace-list-empty" class="wlist">
             <div class="empty">
               @if (currentProfile()) {
                 <b>Brak katalogów roboczych</b>
@@ -172,7 +179,12 @@
               (input)="clearWorkspaceError()"
               #newWorkspaceInput
             />
-            <button class="btn-p" type="submit" [disabled]="!loggedIn() || !currentProfile()">
+            <button
+              id="newWorkspaceSubmit"
+              class="btn-p"
+              type="submit"
+              [disabled]="!loggedIn() || !currentProfile()"
+            >
               <svg class="ic" aria-hidden="true"><use href="#i-plus" /></svg>Utwórz
             </button>
             <button
@@ -201,7 +213,7 @@
     <section id="profile-picker-right" class="right" aria-label="Logowanie i konto">
       @if (!loggedIn() && verifyMode()) {
         <div id="verify-email-panel" class="rbody login">
-          <h2 tabindex="-1">Potwierdź adres e-mail</h2>
+          <h2 id="verify-email-heading" tabindex="-1">Potwierdź adres e-mail</h2>
           <p class="sub">
             Wysłaliśmy 6-cyfrowy kod na adres <b>{{ verifyEmailAddress() }}</b
             >. Wpisz go, aby aktywować konto.
@@ -254,14 +266,14 @@
           </p>
         </div>
       } @else if (!loggedIn()) {
-        <div class="rbody login">
+        <div id="login-panel" class="rbody login">
           @if (!registerMode()) {
-            <h2 tabindex="-1">Zaloguj się</h2>
+            <h2 id="login-heading" tabindex="-1">Zaloguj się</h2>
             <p class="sub">
               Wpisz dane konta, aby przejść do swoich profili i katalogów roboczych.
             </p>
           } @else {
-            <h2 tabindex="-1">Utwórz konto</h2>
+            <h2 id="register-heading" tabindex="-1">Utwórz konto</h2>
             <p class="sub">Podaj dane, aby założyć nowe konto.</p>
           }
           <form
@@ -373,8 +385,8 @@
           }
         </div>
       } @else {
-        <div class="rbody acct">
-          <h2 tabindex="-1">Konto</h2>
+        <div id="account-panel" class="rbody acct">
+          <h2 id="account-heading" tabindex="-1">Konto</h2>
           <p class="sub">Dane zalogowanego użytkownika.</p>
           <div class="who">
             <div class="av lg" aria-hidden="true">{{ initials(accountName()) }}</div>
@@ -412,10 +424,15 @@
 
 @if (profilePopoverOpen()) {
   <div id="profPop" #profPop class="pop" (click)="$event.stopPropagation()">
-    <ul class="pl" role="listbox" aria-label="Profile użytkownika">
+    <ul id="profile-list" class="pl" role="listbox" aria-label="Profile użytkownika">
       @for (profile of profiles(); track profile.id) {
-        <li class="pi" [class.on]="profile.id === currentProfileId()">
+        <li
+          [id]="'profile-item-' + profile.id"
+          class="pi"
+          [class.on]="profile.id === currentProfileId()"
+        >
           <button
+            [id]="'profile-select-' + profile.id"
             class="ps"
             type="button"
             role="option"
@@ -443,7 +460,7 @@
     </ul>
     <div class="pfoot">
       @if (addingProfile()) {
-        <form class="padd" (ngSubmit)="confirmAddProfile()">
+        <form id="addProfileForm" class="padd" (ngSubmit)="confirmAddProfile()">
           <input
             id="addPn"
             class="in"
@@ -454,13 +471,13 @@
             [(ngModel)]="newProfileName"
             name="newProfileName"
           />
-          <button class="btn-p" type="submit">Dodaj</button>
+          <button id="addProfileSubmit" class="btn-p" type="submit">Dodaj</button>
         </form>
         @if (profileNameError()) {
-          <p class="perr" role="alert">{{ profileNameError() }}</p>
+          <p id="addProfileError" class="perr" role="alert">{{ profileNameError() }}</p>
         }
       } @else {
-        <button class="pnew" type="button" (click)="startAddProfile()">
+        <button id="pnewBtn" class="pnew" type="button" (click)="startAddProfile()">
           <svg class="ic" aria-hidden="true"><use href="#i-plus" /></svg>Dodaj nowy profil
         </button>
       }
@@ -471,6 +488,7 @@
 @if (confirmDialog()) {
   <div id="scrim" class="scrim">
     <div
+      id="confirm-dialog"
       class="dlg"
       role="alertdialog"
       aria-modal="true"

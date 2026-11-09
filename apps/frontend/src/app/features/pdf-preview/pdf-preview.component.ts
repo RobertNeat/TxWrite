@@ -47,6 +47,15 @@ const EXPORT_FORMATS: {
   },
 ];
 const LAST_EXPORT_FORMAT_KEY = 'editor.lastExportFormat';
+const COMPILE_MODE_KEY = 'editor.compileMode';
+/** Exceeds the editor's own SAVE_DEBOUNCE_MS (800) so typing doesn't thrash auto-compiles. */
+const AUTO_COMPILE_DEBOUNCE_MS = 1800;
+
+type CompileMode = 'manual' | 'auto';
+const COMPILE_MODES: { key: CompileMode; label: string; description: string }[] = [
+  { key: 'manual', label: 'Na żądanie', description: 'Kompiluj tylko po kliknięciu' },
+  { key: 'auto', label: 'Automatycznie', description: 'Kompiluj po każdej edycji' },
+];
 
 type PdfDocumentProxy = import('pdfjs-dist').PDFDocumentProxy;
 type PdfLoadingTask = import('pdfjs-dist').PDFDocumentLoadingTask;
@@ -83,23 +92,46 @@ interface RenderedPage {
   imports: [TranslatePipe, CompilePanelComponent],
   template: `
     <div id="pdf-preview" class="pdf-preview">
-      <div class="pv-bar" role="toolbar" aria-label="Podgląd PDF">
-        <button
-          id="pv-compile"
-          class="btn btn-p"
-          type="button"
-          [disabled]="compiling()"
-          [title]="'Kompiluj (Ctrl+Enter)'"
-          (click)="compile()"
-        >
-          <svg class="ic" [class.spin]="compiling()" aria-hidden="true">
-            <use [attr.href]="compiling() ? '#i-spin' : '#i-play'" />
-          </svg>
-          <span id="pv-compile-label">{{ compiling() ? 'Kompilacja…' : 'Kompiluj' }}</span>
-          @if (stale() && !compiling()) {
-            <span id="pv-stale-dot" class="sdot" title="Zmiany nieskompilowane"></span>
-          }
-        </button>
+      <div id="pv-bar" class="pv-bar" role="toolbar" aria-label="Podgląd PDF">
+        <div class="split" id="compile-split">
+          <button
+            id="pv-compile"
+            class="btn btn-p sp-main"
+            type="button"
+            [disabled]="compiling()"
+            [title]="
+              'Kompiluj (Ctrl+Enter)' +
+              (compileMode() === 'auto' ? ' · autokompilacja włączona' : '')
+            "
+            (click)="compile()"
+          >
+            <svg class="ic" [class.spin]="compiling()" aria-hidden="true">
+              <use [attr.href]="compiling() ? '#i-spin' : '#i-play'" />
+            </svg>
+            <span id="pv-compile-label">{{ compiling() ? 'Kompilacja…' : 'Kompiluj' }}</span>
+            @if (compileMode() === 'auto') {
+              <span id="pv-auto-badge" class="auto-badge" title="Autokompilacja włączona"
+                >auto</span
+              >
+            }
+            @if (stale() && !compiling()) {
+              <span id="pv-stale-dot" class="sdot" title="Zmiany nieskompilowane"></span>
+            }
+          </button>
+          <button
+            id="pv-compile-mode-car"
+            #compileModeCar
+            class="btn btn-p sp-car"
+            type="button"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="compileModeMenuOpen()"
+            aria-controls="pv-compile-mode-pop"
+            aria-label="Wybierz sposób kompilacji"
+            (click)="$event.stopPropagation(); toggleCompileModeMenu()"
+          >
+            <svg class="ic sm" aria-hidden="true"><use href="#i-chev-d" /></svg>
+          </button>
+        </div>
         <button
           id="pv-log-toggle"
           class="btn tgl"
@@ -238,13 +270,42 @@ interface RenderedPage {
         </div>
       }
 
+      @if (compileModeMenuOpen()) {
+        <div
+          id="pv-compile-mode-pop"
+          #compileModePop
+          class="pop compile-mode-pop"
+          role="menu"
+          aria-label="Sposób kompilacji"
+        >
+          @for (mode of compileModes; track mode.key) {
+            <button
+              [id]="'pv-compile-mode-item-' + mode.key"
+              class="mi"
+              role="menuitemradio"
+              type="button"
+              [attr.aria-checked]="mode.key === compileMode()"
+              (click)="setCompileMode(mode.key); closeCompileModeMenu()"
+            >
+              <b
+                >{{ mode.label }}
+                @if (mode.key === compileMode()) {
+                  <svg class="ic" aria-hidden="true"><use href="#i-check" /></svg>
+                }
+              </b>
+              <small>{{ mode.description }}</small>
+            </button>
+          }
+        </div>
+      }
+
       @if (exportToast()) {
         <div id="exp-toast" class="toast on" role="status" aria-live="polite">
           {{ exportToast() }}
         </div>
       }
 
-      <div class="pv-scroll" #scroll (scroll)="onScroll()">
+      <div id="pv-scroll" class="pv-scroll" #scroll (scroll)="onScroll()">
         @if (error()) {
           <p id="pdf-preview-error" class="pdf-preview-error">{{ 'pdfPreview.error' | t }}</p>
         } @else if (!hasDocument()) {
@@ -255,7 +316,7 @@ interface RenderedPage {
 
       @if (logOpen()) {
         <div id="pv-logp" class="logp">
-          <div class="logp-h">
+          <div id="pv-logp-header" class="logp-h">
             <h3>Logi kompilacji</h3>
             <span id="pv-log-count" class="cnt">{{ errorCountLabel() }}</span>
             <span class="spacer"></span>
@@ -270,7 +331,7 @@ interface RenderedPage {
               <svg class="ic" aria-hidden="true"><use href="#i-close" /></svg>
             </button>
           </div>
-          <div class="logp-b">
+          <div id="pv-logp-body" class="logp-b">
             <app-compile-panel
               [isMarkdownProject]="compiledIsMarkdown()"
               [result]="lastResult()"
@@ -301,6 +362,8 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   @ViewChild('pageInput') private pageInputRef?: ElementRef<HTMLInputElement>;
   @ViewChild('expCar') private expCarRef?: ElementRef<HTMLElement>;
   @ViewChild('expPop') private expPopRef?: ElementRef<HTMLElement>;
+  @ViewChild('compileModeCar') private compileModeCarRef?: ElementRef<HTMLElement>;
+  @ViewChild('compileModePop') private compileModePopRef?: ElementRef<HTMLElement>;
 
   protected readonly ZOOM_STEP = ZOOM_STEP;
   protected readonly hasDocument = signal(false);
@@ -317,6 +380,15 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
   protected readonly exportFormats = EXPORT_FORMATS;
   protected readonly exportMenuOpen = signal(false);
   protected readonly exportToast = signal('');
+
+  protected readonly compileModes = COMPILE_MODES;
+  protected readonly compileModeMenuOpen = signal(false);
+  protected readonly compileMode = signal<CompileMode>(
+    (localStorage.getItem(COMPILE_MODE_KEY) as CompileMode | null) ?? 'manual',
+  );
+  private autoCompileTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Set when an edit arrives while a compile is already in flight, so its trailing debounce fire runs one more compile instead of being silently dropped. */
+  private pendingRecompile = false;
   private readonly lastExportFormatKey = signal<(typeof EXPORT_FORMATS)[number]['key']>(
     (localStorage.getItem(LAST_EXPORT_FORMAT_KEY) as
       (typeof EXPORT_FORMATS)[number]['key'] | null) ?? 'pdf',
@@ -394,6 +466,8 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
 
   async ngOnChanges(changes: SimpleChanges): Promise<void> {
     if (changes['projectId']) {
+      this.cancelAutoCompile();
+      this.pendingRecompile = false;
       this.compiledTarget = this.compileTarget();
       this.compiledIsMarkdown.set(this.isMarkdownProject());
       await this.loadPdf();
@@ -477,10 +551,14 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     this.setZoom(containerWidth / unscaledWidth, false);
   }
 
-  async compile(): Promise<void> {
+  async compile(options: { auto?: boolean } = {}): Promise<void> {
     if (this.compileInFlight) {
       return;
     }
+    // This compile (about to run) covers every edit queued up to now, so any
+    // earlier debounce timer is now redundant — only a *new* edit arriving
+    // during the compile itself (via markStale()) should trigger a trailing run.
+    this.cancelAutoCompile();
     this.compileInFlight = true;
     this.compiling.set(true);
     // Captured once up front: compileTarget()/isMarkdownProject() track the
@@ -495,7 +573,10 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
       const result = await this.api.compile(this.projectId(), target);
       this.lastResult.set(result);
       this.stale.set(false);
-      if (!result.success) {
+      // Auto-triggered compiles never pop the log panel open — otherwise it
+      // would flash open on every pause mid-edit on a momentarily broken
+      // document. The stale dot and error count still surface the failure.
+      if (!result.success && !options.auto) {
         this.logOpen.set(true);
       }
       if (result.pdfPath) {
@@ -506,25 +587,101 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     } finally {
       this.compiling.set(false);
       this.compileInFlight = false;
+      if (this.pendingRecompile) {
+        this.pendingRecompile = false;
+        this.stale.set(true);
+        if (this.compileMode() === 'auto') {
+          this.scheduleAutoCompile();
+        }
+      }
     }
   }
 
   markStale(): void {
-    if (!this.compiling()) {
-      this.stale.set(true);
+    if (this.compiling()) {
+      // The in-flight compile already captured the pre-edit content; this
+      // edit needs its own compile once it settles (handled in compile()'s
+      // finally block), so the dot stays clear here rather than getting set
+      // and then immediately cleared by that compile's own stale.set(false).
+      this.pendingRecompile = true;
+      return;
+    }
+    this.stale.set(true);
+    if (this.compileMode() === 'auto') {
+      this.scheduleAutoCompile();
+    }
+  }
+
+  private scheduleAutoCompile(): void {
+    if (this.autoCompileTimeout) {
+      clearTimeout(this.autoCompileTimeout);
+    }
+    this.autoCompileTimeout = setTimeout(() => {
+      this.autoCompileTimeout = null;
+      void this.compile({ auto: true });
+    }, AUTO_COMPILE_DEBOUNCE_MS);
+  }
+
+  private cancelAutoCompile(): void {
+    if (this.autoCompileTimeout) {
+      clearTimeout(this.autoCompileTimeout);
+      this.autoCompileTimeout = null;
+    }
+  }
+
+  // ---------- compile mode (split button) ----------
+
+  protected closeCompileModeMenu(): void {
+    this.compileModeMenuOpen.set(false);
+  }
+
+  protected toggleCompileModeMenu(): void {
+    if (this.compileModeMenuOpen()) {
+      this.closeCompileModeMenu();
+      return;
+    }
+    this.closeExportMenu();
+    this.compileModeMenuOpen.set(true);
+    afterNextRender(
+      () => {
+        if (this.compileModePopRef && this.compileModeCarRef) {
+          placePopover(
+            this.compileModePopRef.nativeElement,
+            this.compileModeCarRef.nativeElement,
+            false,
+            'left',
+          );
+        }
+      },
+      { injector: this.injector },
+    );
+  }
+
+  protected setCompileMode(mode: CompileMode): void {
+    this.compileMode.set(mode);
+    localStorage.setItem(COMPILE_MODE_KEY, mode);
+    if (mode === 'manual') {
+      this.cancelAutoCompile();
+    } else if (this.stale() && !this.compiling()) {
+      this.scheduleAutoCompile();
     }
   }
 
   // ---------- export (split button) ----------
 
   @HostListener('document:click')
-  protected closeExportMenu(): void {
-    this.exportMenuOpen.set(false);
+  protected closeAllMenus(): void {
+    this.closeExportMenu();
+    this.closeCompileModeMenu();
   }
 
   @HostListener('document:keydown.escape')
   protected handleExportEscape(): void {
-    this.closeExportMenu();
+    this.closeAllMenus();
+  }
+
+  protected closeExportMenu(): void {
+    this.exportMenuOpen.set(false);
   }
 
   protected toggleExportMenu(): void {
@@ -532,6 +689,7 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
       this.closeExportMenu();
       return;
     }
+    this.closeCompileModeMenu();
     this.exportMenuOpen.set(true);
     afterNextRender(
       () => {
@@ -731,5 +889,9 @@ export class PdfPreviewComponent implements AfterViewInit, OnChanges, OnDestroy 
     this.resizeObserver?.disconnect();
     this.activeRenders.forEach((task) => task.cancel());
     void this.loadingTask?.destroy();
+    this.cancelAutoCompile();
+    if (this.exportToastTimeout) {
+      clearTimeout(this.exportToastTimeout);
+    }
   }
 }

@@ -203,5 +203,11 @@ ENV CACHE_DIR=/cache
 EXPOSE 3000
 VOLUME ["/data", "/cache"]
 
+# start-period covers entrypoint.sh's blocking luaotfload-tool -u warmup on a
+# fresh /cache volume, which otherwise makes a healthy container briefly
+# report unhealthy on first start.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "apps/backend/dist/main.js"]

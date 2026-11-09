@@ -63,6 +63,21 @@
   margin-left: 2px;
 }
 
+.auto-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.compile-mode-pop {
+  width: 220px;
+  padding: 6px;
+}
+
 .ic.spin {
   animation: pv-spin 1s linear infinite;
 }
@@ -170,6 +185,21 @@
   background: var(--tint);
 }
 
+/* Compile split button reuses .split/.sp-main/.sp-car but is filled navy
+   (.btn-p), unlike the white export split button. */
+#compile-split .sp-main,
+#compile-split .sp-car {
+  background: var(--navy);
+  color: #fff;
+}
+
+#compile-split .sp-main:hover:not(:disabled),
+#compile-split .sp-car:hover,
+#compile-split .sp-car[aria-expanded='true'] {
+  background: var(--navy);
+  opacity: 0.9;
+}
+
 .pop {
   position: fixed;
   background: #fff;
@@ -201,10 +231,12 @@
   cursor: pointer;
 }
 
-.exp-pop .mi {
+.exp-pop .mi,
+.compile-mode-pop .mi {
   display: grid;
   grid-template-columns: 1fr auto;
   column-gap: 12px;
+  row-gap: 1px;
   white-space: normal;
 }
 

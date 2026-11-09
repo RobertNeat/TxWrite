@@ -6,16 +6,7 @@ import { APP_NAME } from './app-name';
   standalone: true,
   template: `
     <div id="brand" class="brand">
-      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="#9EB7E5" />
-        <path
-          d="M8.5 10.5h15M16 10.5v13"
-          stroke="#223868"
-          stroke-width="3"
-          stroke-linecap="round"
-          fill="none"
-        />
-      </svg>
+      <img id="brand-logo" class="brand-logo" src="/tx_logo.png" width="30" height="30" alt="" />
       <div>
         <b id="brand-title">{{ APP_NAME }}</b>
         <small id="brand-subtitle">Markdown · LaTeX</small>
@@ -28,6 +19,11 @@ import { APP_NAME } from './app-name';
         display: flex;
         align-items: center;
         gap: 10px;
+      }
+      .brand-logo {
+        display: block;
+        border-radius: 8px;
+        object-fit: cover;
       }
       .brand b {
         display: block;

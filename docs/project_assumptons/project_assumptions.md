@@ -131,5 +131,9 @@ Assumption: LaTeX and pandoc templates are **not fully interchangeable** (a pand
 
 - Which pinned TeX Live release, and which exact frozen-snapshot date (see `architecture.md` §6.6)?
 - Compile working directories are persistent per project, not per-request temp (see `architecture.md` §5.1) — should isolation beyond that (restricted UID, mount namespace) be in scope for the MVP, or a later hardening pass (see `architecture.md` §8 note on current feasibility)?
-- Is auto-compile on edit in scope for the MVP, or manual compile first?
+- ~~Is auto-compile on edit in scope for the MVP, or manual compile first?~~
+  Resolved (feature/ui-overhaul): both — a mode toggle next to the compile
+  button, defaulting to manual ("na żądanie"). The choice is a single
+  `localStorage` key, shared across all projects in that browser, not a
+  per-project setting.
 - Should the template gallery be a built-in list or a configurable list of zip URLs?

@@ -1,13 +1,5 @@
 # Open contracts between backend and frontend
 
-## GET /api/health
-
-Implemented on the backend (`apps/backend/src/modules/health`), returns
-`{ status: 'ok', uptimeSeconds: number }`. Nothing in the frontend calls it yet.
-Remove this entry once a frontend consumer (e.g. a status indicator) is added, or once
-it's confirmed the endpoint is meant to stay ops-only (health checks, `docker compose`
-healthcheck) and not be called from the UI.
-
 ## ~~SSE event type mismatch~~ — resolved
 
 Fixed in feature/frontend-wiring: the frontend's `AppEvent`/`AppEventType` now live

@@ -3,7 +3,7 @@
 </div>
 <ul id="outline-list" class="ol" aria-label="Struktura dokumentu">
   @if (isBinary()) {
-    <li class="empty">Plik binarny nie ma sekcji.</li>
+    <li id="outline-empty-binary" class="empty">Plik binarny nie ma sekcji.</li>
   } @else if (items().length) {
     @for (item of items(); track item.ln) {
       <li>
@@ -19,6 +19,6 @@
       </li>
     }
   } @else {
-    <li class="empty">Brak sekcji w tym pliku.</li>
+    <li id="outline-empty-no-sections" class="empty">Brak sekcji w tym pliku.</li>
   }
 </ul>

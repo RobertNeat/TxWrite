@@ -259,7 +259,7 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.editorContent.set(payload);
   }
 
-  private static readonly STALE_EXTENSIONS = new Set(['tex', 'sty', 'cls', 'bib']);
+  private static readonly STALE_EXTENSIONS = new Set(['tex', 'sty', 'cls', 'bib', 'md']);
 
   onDocEdited(path: string): void {
     if (ProjectWorkspaceComponent.STALE_EXTENSIONS.has(extensionOf(path))) {

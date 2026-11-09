@@ -275,7 +275,7 @@
             </button>
           }
         } @else {
-          <div class="ws-empty">Brak obrazów w projekcie.</div>
+          <div id="figure-files-empty" class="ws-empty">Brak obrazów w projekcie.</div>
         }
       }
     </div>
@@ -312,7 +312,7 @@
       (click)="stop($event)"
       (pointerleave)="hoverTableCell(0, 0)"
     >
-      <div class="tbl-grid">
+      <div id="table-grid" class="tbl-grid">
         @for (cell of tableGridCells; track cell.row + '-' + cell.col) {
           <button
             [id]="'tbl-cell-' + cell.row + '-' + cell.col"
@@ -377,7 +377,7 @@
 
 @if (symbolsOpen()) {
   <div id="symbols-panel" class="symp" (click)="stop($event)">
-    <div class="symp-h">
+    <div id="symbols-header" class="symp-h">
       <h3>Symbole</h3>
       <label class="symp-q">
         <svg class="ic" aria-hidden="true"><use href="#i-search" /></svg>
@@ -420,6 +420,7 @@
       @if (visibleSymbols().length) {
         @for (entry of visibleSymbols(); track entry[1]) {
           <button
+            [id]="'symbols-item-' + entry[1]"
             class="sy"
             type="button"
             [title]="entry[1]"
@@ -432,7 +433,9 @@
           </button>
         }
       } @else {
-        <div class="ws-empty">Brak symboli pasujących do „{{ symbolQuery() }}”.</div>
+        <div id="symbols-empty" class="ws-empty">
+          Brak symboli pasujących do „{{ symbolQuery() }}”.
+        </div>
       }
     </div>
     <div class="symp-f">

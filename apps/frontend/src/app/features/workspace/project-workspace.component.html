@@ -27,7 +27,7 @@
     [style.grid-template-columns]="gridTemplateColumns()"
   >
     <aside id="file-tree-pane" class="side" aria-label="Pliki projektu">
-      <div class="side-h">
+      <div id="file-tree-pane-header" class="side-h">
         <button
           id="wsBtn"
           #wsBtn
@@ -109,7 +109,9 @@
                 }
               </button>
             } @empty {
-              <div class="ws-empty">Brak katalogów pasujących do „{{ workspaceQuery }}”.</div>
+              <div id="ws-list-empty" class="ws-empty">
+                Brak katalogów pasujących do „{{ workspaceQuery }}”.
+              </div>
             }
           </div>
         </div>
@@ -145,7 +147,12 @@
     <section id="editor-pane" class="ed" aria-label="Edytor">
       <div id="tabs" class="tabs" role="tablist" aria-label="Otwarte pliki">
         @for (path of openPaths(); track path) {
-          <div class="tab" [class.on]="path === activePath()" (auxclick)="closeTab(path, $event)">
+          <div
+            [id]="'tab-row-' + path"
+            class="tab"
+            [class.on]="path === activePath()"
+            (auxclick)="closeTab(path, $event)"
+          >
             <button
               [id]="'tab-' + path"
               class="tab-b"
@@ -158,6 +165,7 @@
               <span>{{ path }}</span>
             </button>
             <button
+              [id]="'tab-close-' + path"
               class="tab-x"
               type="button"
               [attr.aria-label]="'Zamknij ' + path"
