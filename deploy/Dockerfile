@@ -149,6 +149,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     librsvg2-bin \
     wget \
     gnupg \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=toolchain /opt/texlive /opt/texlive

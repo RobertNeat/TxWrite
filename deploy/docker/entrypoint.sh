@@ -1,6 +1,18 @@
 #!/bin/sh
 set -eu
 
+# Runs as root (image has no USER directive, so the container starts in that
+# namespace by default). Stays root only long enough to fix up volume
+# ownership and write the system-wide fontconfig file + its cache, then
+# drops to the unprivileged "node" user (uid/gid 1000, already present in
+# the node:24-bookworm-slim base image) via gosu before exec'ing the actual
+# Node process — closing the residual-risk note in architecture.md section
+# 8. Everything the Node process spawns at runtime
+# (latexmk/pandoc/tlmgr/fc-cache/luaotfload-tool) inherits that uid via
+# normal process inheritance, since none of them re-exec as root themselves.
+APP_UID="$(id -u node)"
+APP_GID="$(id -g node)"
+
 # /cache is a named volume: Docker only seeds it from image content on first
 # creation, and even then our image writes nothing there at build time (the
 # toolchain installs into /opt/texlive, not /cache). So the TeX user tree and
@@ -8,6 +20,7 @@ set -eu
 # not lazily on the first user compile, which could otherwise time out
 # (architecture.md section 7).
 CACHE_DIR="${CACHE_DIR:-/cache}"
+DATA_DIR="${DATA_DIR:-/data}"
 
 # Runtime TEX_REPO_URL (deploy/docker-compose.yml env) must match what the
 # image was actually built against (TL_IMAGE_REPO_URL, baked in as an ENV from
@@ -48,16 +61,29 @@ export TEXMFVAR="${TL_CACHE_ROOT}/texmf-var"
 export TEXMFCACHE="${TL_CACHE_ROOT}/texmf-var"
 mkdir -p "$TEXMFHOME" "$TEXMFVAR" "${CACHE_DIR}/fonts" "${CACHE_DIR}/downloads" "${CACHE_DIR}/work"
 
+# Volumes may be fresh (root-owned by Docker's default mkdir) or carry
+# root-owned content from before this change — either way, everything under
+# /data and /cache must end up owned by the app user, or later lazy
+# tlmgr/font installs made as "node" would fail with EACCES against
+# root-owned directories from a previous root-run container. find+chown
+# (rather than a blanket chown -R) keeps every restart after the first one
+# cheap once the trees are already owned by the app user.
+find "$DATA_DIR" "$CACHE_DIR" ! -user "$APP_UID" -exec chown -h "${APP_UID}:${APP_GID}" {} +
+
+# tlmgr init-usertree, fc-cache and luaotfload-tool must run as the app user
+# from this point on, or their caches end up root-owned again and
+# unwritable by the app on a later lazy install.
 if [ ! -d "${TEXMFHOME}/tlpkg" ]; then
-  tlmgr --usertree "$TEXMFHOME" init-usertree
+  gosu "$APP_UID:$APP_GID" tlmgr --usertree "$TEXMFHOME" init-usertree
 fi
 # tlmgr --usermode remove fails outright ("backupdir ... is not a directory")
 # on a usertree that has never had a removal before, since init-usertree does
 # not create this directory itself — verified empirically.
 mkdir -p "${TEXMFHOME}/tlpkg/backups"
+chown -R "${APP_UID}:${APP_GID}" "${TEXMFHOME}/tlpkg/backups"
 # --usermode must come before the action, and the repository option is set
 # without a leading "--" (it's the option *name*, not a flag).
-tlmgr --usertree "$TEXMFHOME" --usermode option repository "$TEX_REPO_URL"
+gosu "$APP_UID:$APP_GID" tlmgr --usertree "$TEXMFHOME" --usermode option repository "$TEX_REPO_URL"
 
 # Makes lazily-installed font packages (architecture.md section 7, resolution
 # chain step 3) visible to XeTeX/fontspec via fontconfig. The baked-in image
@@ -77,7 +103,13 @@ cat > /etc/fonts/conf.d/09-texlive-user-fonts.conf <<EOF
 </fontconfig>
 EOF
 fc-cache -f
+# fc-cache just wrote /var/cache/fontconfig as root; it's container-local
+# (not a volume), so handing it to the app user here is safe and lets later
+# runtime fc-cache calls (made as "node" by refreshFontDatabases() after a
+# lazy tlmgr/Google-Fonts install) write to it too instead of failing EACCES
+# or silently falling back to a per-user cache dir.
+chown -R "${APP_UID}:${APP_GID}" /var/cache/fontconfig
 
-luaotfload-tool -u
+gosu "$APP_UID:$APP_GID" luaotfload-tool -u
 
-exec "$@"
+exec gosu "$APP_UID:$APP_GID" "$@"
