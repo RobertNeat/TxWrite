@@ -23,7 +23,7 @@ const PACKAGE_COMMAND =
   /\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^}]+)\}/g;
 const DOCUMENTCLASS = /\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/g;
 const TIKZ_LIBRARY = /\\usetikzlibrary\{([^}]+)\}/g;
-const FONT_COMMAND = /\\set(?:main|sans|mono)font\{([^}]+)\}/g;
+const FONT_COMMAND = /\\set(?:main|sans|mono)font(?:\[[^\]]*\])?\{([^}]+)\}/g;
 
 function splitNames(group: string): string[] {
   return group

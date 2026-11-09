@@ -112,6 +112,7 @@ export class CompileRunnerService {
         success: false,
         diagnostics: [{ severity: 'error', message: pandocDiagnostic }],
         missingFiles: [],
+        missingFonts: [],
         log: '',
         pdfPath: null,
         timedOut: false,
@@ -161,6 +162,7 @@ export class CompileRunnerService {
           success: true,
           diagnostics: [],
           missingFiles: [],
+          missingFonts: [],
           log: existingLog,
           pdfPath,
           timedOut: false,
@@ -184,6 +186,7 @@ export class CompileRunnerService {
           ? [{ severity: 'error', message: outputTail }]
           : [],
         missingFiles: [],
+        missingFonts: [],
         log: outputTail,
         pdfPath: null,
         timedOut,

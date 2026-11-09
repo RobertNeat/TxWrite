@@ -37,9 +37,19 @@ export interface MissingFile {
   fileName: string;
 }
 
+export interface MissingFont {
+  fontName: string;
+}
+
 export interface InstallOutcome {
   packageName: string;
   installed: boolean;
+  message?: string;
+}
+
+export interface FontResolutionOutcome {
+  fontName: string;
+  resolved: boolean;
   message?: string;
 }
 
@@ -47,10 +57,12 @@ export interface CompileResult {
   success: boolean;
   diagnostics: CompileDiagnostic[];
   missingFiles: MissingFile[];
+  missingFonts: MissingFont[];
   log: string;
   pdfPath: string | null;
   timedOut: boolean;
   installs: InstallOutcome[];
+  fontResolutions: FontResolutionOutcome[];
 }
 
 export interface SynctexEditResult {

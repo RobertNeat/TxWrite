@@ -1,20 +1,30 @@
 import { ConfigService } from '@nestjs/config';
 import { PrefetchWatcherService } from './prefetch-watcher.service.js';
 import type { ResourceResolverService } from '../resource-resolver/resource-resolver.service.js';
+import type { FontResolverService } from '../resource-resolver/font-resolver.service.js';
 
 function makeService(delayMs = 4000): {
   service: PrefetchWatcherService;
   resolveAndInstall: ReturnType<typeof vi.fn>;
+  resolveFont: ReturnType<typeof vi.fn>;
 } {
   const resolveAndInstall = vi.fn().mockResolvedValue(null);
   const resourceResolver = {
     resolveAndInstall,
   } as unknown as ResourceResolverService;
+  const resolveFont = vi
+    .fn()
+    .mockResolvedValue({ fontName: '', resolved: false });
+  const fontResolver = { resolveFont } as unknown as FontResolverService;
   const config = {
     get: (_key: string, fallback?: number) => fallback ?? delayMs,
   } as unknown as ConfigService;
-  const service = new PrefetchWatcherService(resourceResolver, config);
-  return { service, resolveAndInstall };
+  const service = new PrefetchWatcherService(
+    resourceResolver,
+    fontResolver,
+    config,
+  );
+  return { service, resolveAndInstall, resolveFont };
 }
 
 describe('PrefetchWatcherService', () => {
@@ -129,5 +139,15 @@ describe('PrefetchWatcherService', () => {
 
     expect(resolveAndInstall).toHaveBeenCalledWith('tikz.sty', 'p1');
     expect(resolveAndInstall).toHaveBeenCalledWith('amsmath.sty', 'p2');
+  });
+
+  it('promotes a font reference via the font resolver, separate from file installs', () => {
+    const { service, resolveAndInstall, resolveFont } = makeService(4000);
+    service.scan('p1', 'main.tex', '\\setmainfont{Inter}');
+
+    vi.advanceTimersByTime(4001);
+
+    expect(resolveFont).toHaveBeenCalledWith('Inter', 'p1');
+    expect(resolveAndInstall).not.toHaveBeenCalled();
   });
 });

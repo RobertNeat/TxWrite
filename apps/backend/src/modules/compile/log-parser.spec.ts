@@ -24,6 +24,15 @@ describe('parseCompileLog', () => {
     expect(result.missingFiles).toContainEqual({ fileName: 'polyglossia.sty' });
   });
 
+  it('extracts a missing font name from a real fontspec-error log (xelatex)', () => {
+    const log = readFixture('missing-font.log');
+    const result = parseCompileLog(log, true);
+    expect(result.success).toBe(false);
+    expect(result.missingFonts).toEqual([
+      { fontName: 'ThisFontDoesNotExistAnywhere' },
+    ]);
+  });
+
   it('extracts file:line diagnostics from a real syntax-error log', () => {
     const log = readFixture('syntax-error.log');
     const result = parseCompileLog(log, false);

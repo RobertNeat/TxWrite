@@ -56,4 +56,33 @@ describe('PackageIndexService', () => {
     const service = await makeService(null);
     expect(service.packageProviding('anything.sty')).toBeUndefined();
   });
+
+  it('resolves a font family name to its package via normalized filename stems', async () => {
+    const service = await makeService({
+      'EBGaramond-Regular.otf': 'ebgaramond',
+      'EBGaramond-Bold.otf': 'ebgaramond',
+      'EBGaramond-Italic.otf': 'ebgaramond',
+    });
+    expect(service.packageProvidingFont('EB Garamond')).toBe('ebgaramond');
+  });
+
+  it('is case- and separator-insensitive when matching a font family name', async () => {
+    const service = await makeService({ 'FiraSans-Regular.otf': 'fira' });
+    expect(service.packageProvidingFont('fira sans')).toBe('fira');
+    expect(service.packageProvidingFont('Fira-Sans')).toBe('fira');
+  });
+
+  it('returns undefined for a font name with no matching filename stem', async () => {
+    const service = await makeService({
+      'EBGaramond-Regular.otf': 'ebgaramond',
+    });
+    expect(
+      service.packageProvidingFont('Totally Different Font'),
+    ).toBeUndefined();
+  });
+
+  it('ignores non-font files (.sty/.cls) when building the font-name index', async () => {
+    const service = await makeService({ 'tikz.sty': 'pgf' });
+    expect(service.packageProvidingFont('tikz')).toBeUndefined();
+  });
 });

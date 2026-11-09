@@ -1,4 +1,4 @@
-import { ConfigService } from '@nestjs/config';
+﻿import { ConfigService } from '@nestjs/config';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -10,6 +10,7 @@ import type {
   CompileResult,
 } from './compile-runner.service.js';
 import type { ResourceResolverService } from '../resource-resolver/resource-resolver.service.js';
+import type { FontResolverService } from '../resource-resolver/font-resolver.service.js';
 import type { ProjectsService } from '../projects/projects.service.js';
 
 function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
@@ -17,6 +18,7 @@ function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
     success: false,
     diagnostics: [],
     missingFiles: [],
+    missingFonts: [],
     log: '',
     pdfPath: null,
     timedOut: false,
@@ -26,6 +28,12 @@ function makeResult(overrides: Partial<CompileResult> = {}): CompileResult {
 
 function makeConfig(): ConfigService {
   return { get: () => 5000 } as unknown as ConfigService;
+}
+
+function makeFontResolver(): FontResolverService {
+  return {
+    resolveFont: vi.fn().mockResolvedValue({ fontName: '', resolved: false }),
+  } as unknown as FontResolverService;
 }
 
 function makeProjectsService(): ProjectsService {
@@ -63,6 +71,7 @@ describe('CompileService.compile (retry loop)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -102,6 +111,7 @@ describe('CompileService.compile (retry loop)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -134,6 +144,7 @@ describe('CompileService.compile (retry loop)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -171,6 +182,7 @@ describe('CompileService.compile (retry loop)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -200,6 +212,7 @@ describe('CompileService.compile (retry loop)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       eventBus,
       makeConfig(),
     );
@@ -238,6 +251,7 @@ describe('CompileService.compile (target file override)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -264,6 +278,7 @@ describe('CompileService.compile (target file override)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );
@@ -286,6 +301,7 @@ describe('CompileService.compile (target file override)', () => {
       new CompileQueueService(),
       compileRunner,
       resourceResolver,
+      makeFontResolver(),
       new EventBusService(),
       makeConfig(),
     );

@@ -41,6 +41,20 @@ describe('extractReferences', () => {
     expect(files).toEqual(['tikz.sty']);
   });
 
+  it('extracts a font command with bracketed options', () => {
+    const { fonts } = extractReferences(
+      '\\setmainfont[Scale=0.9]{Source Sans Pro}',
+    );
+    expect(fonts).toEqual(['Source Sans Pro']);
+  });
+
+  it('extracts \\setsansfont and \\setmonofont the same as \\setmainfont', () => {
+    const { fonts } = extractReferences(
+      '\\setsansfont{Inter}\\setmonofont{Fira Code}',
+    );
+    expect(fonts).toEqual(['Inter', 'Fira Code']);
+  });
+
   it('ignores a commented-out \\usepackage', () => {
     const { files } = extractReferences(
       '% \\usepackage{tikz}\nNo package here.',

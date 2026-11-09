@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { extractReferences } from './reference-extractor.js';
 import { ResourceResolverService } from '../resource-resolver/resource-resolver.service.js';
+import { FontResolverService } from '../resource-resolver/font-resolver.service.js';
 
 interface CandidateKey {
   projectId: string;
@@ -11,6 +12,8 @@ interface CandidateKey {
 interface Candidate {
   files: Set<string>;
   fonts: Set<string>;
+  // Prefixed ("file:"/"font:") so a package filename and a font name can
+  // never collide in the same promoted set.
   promoted: Set<string>;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -29,10 +32,10 @@ interface Candidate {
  * debounced edit (harmless since ResourceResolverService now treats tlmgr's
  * "already present" as success, but still wasted work and an extra
  * install.queued/install.finished pair in the status bar for no reason).
- * Installs always go through ResourceResolverService, which itself
- * serializes through JobQueueService — so a prefetch install and a
- * compile-retry install of the same package can never race each other
- * (section 6.2).
+ * Installs always go through ResourceResolverService/FontResolverService,
+ * which themselves serialize through JobQueueService — so a prefetch
+ * install and a compile-retry install of the same package/font can never
+ * race each other (section 6.2).
  */
 @Injectable()
 export class PrefetchWatcherService implements OnModuleDestroy {
@@ -41,6 +44,7 @@ export class PrefetchWatcherService implements OnModuleDestroy {
 
   constructor(
     private readonly resourceResolver: ResourceResolverService,
+    private readonly fontResolver: FontResolverService,
     config: ConfigService,
   ) {
     this.delayMs = Number(config.get('PREFETCH_DELAY_MS', 4000));
@@ -89,11 +93,15 @@ export class PrefetchWatcherService implements OnModuleDestroy {
     // fresh stability window, so only keep "already promoted" entries for
     // references still present.
     const promoted = new Set(
-      [...(existing?.promoted ?? [])].filter((name) => fileSet.has(name)),
+      [...(existing?.promoted ?? [])].filter(
+        (entry) =>
+          (entry.startsWith('file:') && fileSet.has(entry.slice(5))) ||
+          (entry.startsWith('font:') && fontSet.has(entry.slice(5))),
+      ),
     );
 
     const timer = setTimeout(() => {
-      this.promote(projectId, key, fileSet, promoted);
+      this.promote(projectId, key, fileSet, fontSet, promoted);
     }, this.delayMs);
 
     this.pending.set(key, { files: fileSet, fonts: fontSet, promoted, timer });
@@ -104,18 +112,26 @@ export class PrefetchWatcherService implements OnModuleDestroy {
     projectId: string,
     key: string,
     files: Set<string>,
+    fonts: Set<string>,
     promoted: Set<string>,
   ): void {
     for (const fileName of files) {
-      if (promoted.has(fileName)) {
+      const entry = `file:${fileName}`;
+      if (promoted.has(entry)) {
         continue;
       }
-      promoted.add(fileName);
-      // Fire-and-forget: resolveAndInstall already emits install.* events and
-      // is deduplicated/serialized by JobQueueService, so a prefetch promote
-      // racing a compile-retry install of the same package just joins the
-      // same in-flight promise rather than double-installing.
+      promoted.add(entry);
+      // Fire-and-forget: resolveAndInstall already emits install.* events
+      // and is deduplicated/serialized by JobQueueService.
       void this.resourceResolver.resolveAndInstall(fileName, projectId);
+    }
+    for (const fontName of fonts) {
+      const entry = `font:${fontName}`;
+      if (promoted.has(entry)) {
+        continue;
+      }
+      promoted.add(entry);
+      void this.fontResolver.resolveFont(fontName, projectId);
     }
     const candidate = this.pending.get(key);
     if (candidate) {

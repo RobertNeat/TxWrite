@@ -55,6 +55,25 @@ fi
 # without a leading "--" (it's the option *name*, not a flag).
 tlmgr --usertree "$TEXMFHOME" --usermode option repository "$TEX_REPO_URL"
 
+# Makes lazily-installed font packages (architecture.md section 7, resolution
+# chain step 3) visible to XeTeX/fontspec via fontconfig. The baked-in image
+# config (deploy/docker/texlive-fonts.conf) only covers /opt/texlive's
+# bundled fonts; TEXMFHOME is a /cache path only known at runtime, so this
+# entry can't be baked in at build time. Filename must carry fontconfig's
+# numeric-prefix naming convention (e.g. "09-..."): verified empirically
+# that a conf.d file without one is silently never read, so a lazily
+# installed font would otherwise "install" successfully via tlmgr yet still
+# fail to compile with the same "font not found" error as before the install.
+cat > /etc/fonts/conf.d/09-texlive-user-fonts.conf <<EOF
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>${TEXMFHOME}/fonts/opentype</dir>
+  <dir>${TEXMFHOME}/fonts/truetype</dir>
+</fontconfig>
+EOF
+fc-cache -f
+
 luaotfload-tool -u
 
 exec "$@"

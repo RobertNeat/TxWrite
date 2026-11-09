@@ -9,6 +9,10 @@ import {
   ResourceResolverService,
   type InstallOutcome,
 } from '../resource-resolver/resource-resolver.service.js';
+import {
+  FontResolverService,
+  type FontResolutionOutcome,
+} from '../resource-resolver/font-resolver.service.js';
 import { CompileQueueService } from './compile-queue.service.js';
 import {
   CompileRunnerService,
@@ -17,6 +21,7 @@ import {
 
 export interface CompileResultWithInstalls extends CompileResult {
   installs: InstallOutcome[];
+  fontResolutions: FontResolutionOutcome[];
 }
 
 @Injectable()
@@ -28,6 +33,7 @@ export class CompileService {
     private readonly compileQueue: CompileQueueService,
     private readonly compileRunner: CompileRunnerService,
     private readonly resourceResolver: ResourceResolverService,
+    private readonly fontResolver: FontResolverService,
     private readonly eventBus: EventBusService,
     config: ConfigService,
   ) {
@@ -75,21 +81,23 @@ export class CompileService {
 
   /**
    * Reactive retry loop (architecture.md section 5.3): on a missing-package
-   * error, resolve and install the package, then retry. Capped by "no new
-   * package installed in the last iteration" or a time budget — not a fixed
-   * iteration count, since a single template can need many packages resolved
-   * one miss at a time (section 6.2). Each package is attempted at most once
-   * per compile (section 6.7: stop retrying a package within one compile), so
-   * a package the index resolves to but that still fails to install can't spin
-   * the loop until the time budget runs out.
+   * or missing-font error, resolve and install it, then retry. Capped by "no
+   * new package/font resolved in the last iteration" or a time budget — not
+   * a fixed iteration count, since a single template can need many packages
+   * resolved one miss at a time (section 6.2). Each package/font is
+   * attempted at most once per compile (section 6.7: stop retrying within one
+   * compile), so one that resolves but still fails to install can't spin the
+   * loop until the time budget runs out.
    */
   private async compileWithRetry(
     projectId: string,
     project: { mainFile: string; engine: string },
   ): Promise<CompileResultWithInstalls> {
     const deadline = Date.now() + this.retryBudgetMs;
-    const attempted = new Set<string>();
+    const attemptedFiles = new Set<string>();
+    const attemptedFonts = new Set<string>();
     const installs: InstallOutcome[] = [];
+    const fontResolutions: FontResolutionOutcome[] = [];
 
     let result = await this.compileRunner.runOnce(
       projectId,
@@ -98,16 +106,19 @@ export class CompileService {
     );
 
     while (!result.success && !result.timedOut && Date.now() < deadline) {
-      const unattempted = result.missingFiles.filter(
-        ({ fileName }) => !attempted.has(fileName),
+      const unattemptedFiles = result.missingFiles.filter(
+        ({ fileName }) => !attemptedFiles.has(fileName),
       );
-      if (unattempted.length === 0) {
+      const unattemptedFonts = result.missingFonts.filter(
+        ({ fontName }) => !attemptedFonts.has(fontName),
+      );
+      if (unattemptedFiles.length === 0 && unattemptedFonts.length === 0) {
         break;
       }
 
-      let installedAny = false;
-      for (const { fileName } of unattempted) {
-        attempted.add(fileName);
+      let resolvedAny = false;
+      for (const { fileName } of unattemptedFiles) {
+        attemptedFiles.add(fileName);
         const outcome = await this.resourceResolver.resolveAndInstall(
           fileName,
           projectId,
@@ -115,21 +126,32 @@ export class CompileService {
         if (outcome) {
           installs.push(outcome);
           if (outcome.installed) {
-            installedAny = true;
+            resolvedAny = true;
           }
         }
       }
+      for (const { fontName } of unattemptedFonts) {
+        attemptedFonts.add(fontName);
+        const outcome = await this.fontResolver.resolveFont(
+          fontName,
+          projectId,
+        );
+        fontResolutions.push(outcome);
+        if (outcome.resolved) {
+          resolvedAny = true;
+        }
+      }
 
-      if (!installedAny) {
-        // Nothing new was installed this iteration — every missing file either
-        // isn't in the index or failed to install. Retrying would just
-        // reproduce the same error, so stop here.
+      if (!resolvedAny) {
+        // Nothing new was resolved this iteration — every missing
+        // file/font either isn't resolvable or failed to install. Retrying
+        // would just reproduce the same error, so stop here.
         break;
       }
 
       // Force a fresh latexmk pass: sources are unchanged, so without -g
       // latexmk may consider the existing (failed) output "up to date" and
-      // skip rebuilding even though a package was just installed.
+      // skip rebuilding even though something was just installed.
       result = await this.compileRunner.runOnce(
         projectId,
         project.mainFile,
@@ -138,7 +160,7 @@ export class CompileService {
       );
     }
 
-    return { ...result, installs };
+    return { ...result, installs, fontResolutions };
   }
 
   outputPdfPath(projectId: string, targetFile?: string): string {

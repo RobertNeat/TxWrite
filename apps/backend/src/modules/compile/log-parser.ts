@@ -11,10 +11,15 @@ export interface MissingFile {
   fileName: string;
 }
 
+export interface MissingFont {
+  fontName: string;
+}
+
 export interface ParsedLog {
   success: boolean;
   diagnostics: CompileDiagnostic[];
   missingFiles: MissingFile[];
+  missingFonts: MissingFont[];
 }
 
 // Matches `-file-line-error` output: "<file>:<line>: <message>".
@@ -38,6 +43,21 @@ const TIKZ_LIBRARY_FILENAME = /files named (\S+\.code\.tex)/;
 // Matches "! LaTeX Error: ..." / "! Undefined control sequence." style bare "!" errors
 // that don't have a file:line prefix (e.g. emergency stops before TeX knows a location).
 const BARE_ERROR = /^! (.+)$/;
+
+// Matches fontspec's missing-font error (architecture.md section 7, step detection).
+// Verified against real xelatex and lualatex logs (identical message from both,
+// since both go through the fontspec package): the file:line prefix line itself
+// ("<file>:<line>: Package fontspec Error: ") carries no font name — it's on the
+// next physical line, wrapped with a "(fontspec)" continuation prefix:
+//   ./main.tex:4: Package fontspec Error:
+//   (fontspec)                The font "ThisFontDoesNotExistAnywhere" cannot be
+//   (fontspec)                found; this may be but usually is not a fontspec
+// Deliberately not parsed from the later "Font ...=NAME at Npt not loadable"
+// line: its NAME is prefixed with engine-specific internal syntax
+// (xelatex: "=NAME at 10.0pt"; lualatex: "name:NAME:mode=node;..."), unlike this
+// message's quoted, verbatim font name.
+const FONTSPEC_ERROR = /^(?:.+?:\d+: )?Package fontspec Error: ?$/;
+const FONTSPEC_FONT_NAME = /^\(fontspec\)\s+The font "([^"]+)" cannot be/;
 
 // TeX's own generic follow-up boilerplate after a real error has already been
 // reported (with its own message, usually via FILE_LINE_ERROR/BARE_ERROR just
@@ -75,11 +95,34 @@ function splitErrorType(message: string): {
 export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
   const diagnostics: CompileDiagnostic[] = [];
   const missingFiles: MissingFile[] = [];
+  const missingFonts: MissingFont[] = [];
   const seenMissingFiles = new Set<string>();
+  const seenMissingFonts = new Set<string>();
 
   const lines = log.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Checked before FILE_LINE_ERROR: "<file>:<line>: Package fontspec Error: "
+    // itself matches that generic pattern too (a non-empty "message" of
+    // "Package fontspec Error: "), but the actual font name is on the next
+    // physical line, not this one.
+    if (FONTSPEC_ERROR.test(line)) {
+      const fontMatch = FONTSPEC_FONT_NAME.exec(lines[i + 1] ?? '');
+      if (fontMatch) {
+        const fontName = fontMatch[1];
+        if (!seenMissingFonts.has(fontName)) {
+          seenMissingFonts.add(fontName);
+          missingFonts.push({ fontName });
+        }
+        diagnostics.push({
+          severity: 'error',
+          errorType: 'Package fontspec Error',
+          message: `The font "${fontName}" cannot be found.`,
+        });
+      }
+      continue;
+    }
 
     const missingFileMatch = MISSING_FILE.exec(line);
     if (missingFileMatch) {
@@ -138,5 +181,6 @@ export function parseCompileLog(log: string, pdfProduced: boolean): ParsedLog {
     success: pdfProduced && diagnostics.length === 0,
     diagnostics,
     missingFiles,
+    missingFonts,
   };
 }
