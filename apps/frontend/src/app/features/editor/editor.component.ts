@@ -355,6 +355,7 @@ export class EditorComponent implements AfterViewInit, OnChanges, OnDestroy {
           editorKeymap,
           languageExtension,
           lineMarksExtension,
+          EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               this.scheduleSave(path);

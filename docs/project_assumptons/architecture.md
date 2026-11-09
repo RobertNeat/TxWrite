@@ -241,6 +241,6 @@ compose`/orchestrators would see the container as briefly unhealthy right
 
 ## 10. Events and observability
 
-- SSE stream carries: `compile.started`, `compile.finished`, `install.queued`, `install.started`, `install.finished`, `install.failed`, `font.resolving`, `font.resolved`, `font.failed` — all implemented and emitted, but see §3's `/api/events` note and `docs/contracts/api.md`: nothing in the frontend subscribes to or renders `install.*`/`font.*` yet (only the SSE connection status itself is shown).
+- SSE stream carries: `compile.started`, `compile.finished`, `install.queued`, `install.started`, `install.finished`, `install.failed`, `font.resolving`, `font.resolved`, `font.failed` — all implemented and emitted. `install.*`/`font.*` are rendered as a transient, queued single line in `StatusBarComponent` (separate from the compile log panel); see `docs/contracts/api.md` for the remaining gap (`CompileResult.installs`/`.fontResolutions` per-compile summary, not yet rendered anywhere).
 - Install and compile logs are stored per project for debugging.
 - `GET /api/health` returns app status only — see §3; it does not report toolchain versions or cache size.

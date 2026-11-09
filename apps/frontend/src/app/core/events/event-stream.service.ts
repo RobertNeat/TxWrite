@@ -1,4 +1,5 @@
 import { Injectable, OnDestroy, inject, signal } from '@angular/core';
+import { Subject } from 'rxjs';
 import { AuthService } from '../auth/auth.service.js';
 import type { AppEvent } from '../api/api.types.js';
 
@@ -15,10 +16,13 @@ export class EventStreamService implements OnDestroy {
   private reconnecting = false;
   private destroyed = false;
   private reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+  private readonly eventsSubject = new Subject<AppEvent>();
 
   readonly lastEvent = signal<AppEvent | null>(null);
   readonly events = signal<AppEvent[]>([]);
   readonly connected = signal(false);
+  /** Push channel: every message, in order, never dropped by a signal update collapsing. */
+  readonly events$ = this.eventsSubject.asObservable();
 
   connect(): void {
     if (this.source || typeof EventSource === 'undefined') {
@@ -46,6 +50,7 @@ export class EventStreamService implements OnDestroy {
       const event = JSON.parse(message.data) as AppEvent;
       this.lastEvent.set(event);
       this.events.update((list) => [...list.slice(-(MAX_EVENTS - 1)), event]);
+      this.eventsSubject.next(event);
     };
   }
 
@@ -81,5 +86,6 @@ export class EventStreamService implements OnDestroy {
     this.destroyed = true;
     this.source?.close();
     this.source = null;
+    this.eventsSubject.complete();
   }
 }

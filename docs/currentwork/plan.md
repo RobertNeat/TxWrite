@@ -4,21 +4,6 @@
 
 # Next cycles
 
-- **Install/font status-bar line.** See `docs/contracts/api.md` for the
-  open contract this closes (`install.*`/`font.*` events + `installs`/
-  `fontResolutions` have no frontend consumer today). Extend
-  `StatusBarComponent` with a single-line transient status area, separate
-  from the compile log panel (`.logp`) — `install.*`/`font.*` SSE events
-  must never appear there.
-  - Each event renders one short line (e.g. "Installing tikz-cd…",
-    "Resolved font EB Garamond"), shown for a fixed number of seconds, then
-    cleared.
-  - Events arriving while one is already showing must queue, not overwrite
-    or overlap — a visible queue of pending messages, drained one at a
-    time, so the user can read each one instead of being flooded.
-  - Decide the per-message display duration and queue cap (how many
-    pending messages before older ones are dropped) before implementing.
-
 - **LuaTeX project `fonts/` folder support, with shared caching.** Give
   LuaTeX feature parity with XeTeX's per-compile `FONTCONFIG_FILE`
   (architecture.md §7 step 2), without the cross-project leak a shared
@@ -51,6 +36,18 @@
   - Account for GitHub's unauthenticated rate limits on raw-content
     fetches (no auth token planned) — needs a sensible failure mode when
     rate-limited, not a hard failure that looks like "font not found."
+  - Add the `fonts-liberation` system package to the Dockerfile as part of
+    this step — confirmed in this session that `Liberation Serif`/`Liberation
+    Sans`/`Courier New` (metric-compatible aliases fontconfig already maps
+    to TeX Gyre Termes/Heros/Cursor via `fc-match`) are not in TeX Live
+    under their literal names (checked the built `package-index.json.gz`:
+    zero `.otf`/`.ttf` entries for any of the three). `fonts-liberation`
+    ships Liberation Serif/Sans/Mono as real installed system fonts, so
+    `fc-match`'s exact-family check in `FontResolverService.isAlreadyInstalled`
+    would then resolve them directly — no TeX Live package or Google Fonts
+    fetch needed for this specific family. Does not cover `Courier New`
+    itself (no open package ships under that literal name); document that
+    gap rather than silently leaving it unresolved.
 
 - **Non-root container user.** Run the Node process (and everything it
   spawns — `latexmk`/`pandoc`/`tlmgr`/`fc-cache`/`luaotfload-tool`) as a

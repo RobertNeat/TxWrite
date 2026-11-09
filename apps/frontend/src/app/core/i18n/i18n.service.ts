@@ -22,7 +22,9 @@ export class I18nService {
     localStorage?.setItem(STORAGE_KEY, lang);
   }
 
-  t(key: string): string {
-    return this.dictionary()[key] ?? key;
+  t(key: string, params?: Record<string, string>): string {
+    const template = this.dictionary()[key] ?? key;
+    if (!params) return template;
+    return template.replace(/\{(\w+)\}/g, (match, name) => params[name] ?? match);
   }
 }

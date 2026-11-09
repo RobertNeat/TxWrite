@@ -1,15 +1,12 @@
 # Open contracts between backend and frontend
 
-## `install.*`/`font.*` SSE events, `CompileResult.installs`/`.fontResolutions` — backend emits, frontend doesn't render
+## `CompileResult.installs`/`.fontResolutions` — backend emits, frontend doesn't render
 
-Both `install.*` (packages) and `font.*` (fonts) events are emitted by the
-backend (`ResourceResolverService`/`FontResolverService`) and typed on the
-frontend (`AppEventType`, `CompileResult.installs`/`.fontResolutions` in
-`api.types.ts`), but nothing in the frontend subscribes to them or renders
-them — `StatusBarComponent` only shows connect/disconnect, and
-`CompilePanelComponent` only renders `diagnostics`, not
-`installs`/`fontResolutions`. A user sees no UI feedback while a package or
-font installs in the background (prefetch) or during a compile retry — only
-the eventual compile success/failure. Scoped for next cycle in
-`docs/currentwork/plan.md` (status-bar line, queued, separate from the
-compile log panel).
+`StatusBarComponent` now renders the live `install.*`/`font.*` SSE events
+(transient queued line, see `docs/currentwork/plan.md` history). The
+remaining gap: `CompileResult.installs`/`.fontResolutions` — the final,
+per-compile summary returned alongside `diagnostics` — are still typed on
+the frontend (`api.types.ts`) but not rendered anywhere. `CompilePanelComponent`
+only renders `diagnostics`. A user who missed the transient status-bar line
+(e.g. reloaded mid-compile) has no way to see after the fact which packages/
+fonts were installed/resolved during that compile.
