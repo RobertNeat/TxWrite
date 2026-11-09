@@ -23,6 +23,9 @@ apps/backend/public/
 log/
 *.log
 
+# Personal notes
+/log_in_with_google_account.md
+
 # IDE
 .idea/
 .vscode/*
