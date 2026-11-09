@@ -94,4 +94,15 @@ describe('PackageIndexService', () => {
       'ebgaramond',
     );
   });
+
+  it("resolves a stripped-extension stem (fontspec's own reported form for a filename-style reference) by trying .otf/.ttf against the exact index", async () => {
+    const service = await makeService({
+      'EBGaramond-Regular.otf': 'ebgaramond',
+    });
+    // fontspec reports this as "EBGaramond-Regular" (extension stripped),
+    // not "EBGaramond-Regular.otf" — verified against a real log.
+    expect(service.packageProvidingFont('EBGaramond-Regular')).toBe(
+      'ebgaramond',
+    );
+  });
 });

@@ -93,7 +93,11 @@ export class FontResolverService {
 
     const packageName = this.packageIndex.packageProvidingFont(fontName);
     if (!packageName) {
-      const message = `Font "${fontName}" not found. Upload the font file to this project's fonts folder.`;
+      // "Upload to fonts/" is verified to work for xelatex (CompileRunnerService's
+      // per-compile FONTCONFIG_FILE), but not for lualatex — see architecture.md
+      // section 7 step 2 — so the message doesn't promise a fix that only works
+      // for one engine.
+      const message = `Font "${fontName}" not found. For XeLaTeX projects, upload the font file to this project's fonts folder.`;
       this.eventBus.emit({
         type: 'font.failed',
         projectId,

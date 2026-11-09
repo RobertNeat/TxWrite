@@ -1,9 +1,12 @@
 # Postponed for future sessions
 
-- Font resolution section 7 step 2 (project `fonts/` folder: per-compile
-  `FONTCONFIG_FILE`/`OSFONTDIR` setup) — steps 1, 3, and 5 are done
-  (`FontResolverService`); this step is a compile-runner environment change,
-  not a resolver change, and was not part of this session's scope
+- Font resolution section 7 step 2, LuaTeX half only: a project's `fonts/`
+  folder is not made visible to `luaotfload`, since its font-name database
+  is shared/global per container (not per-project) — registering a
+  project's fonts there the way step 3 does for an installed package would
+  leak that project's fonts into every other project's LuaTeX compiles.
+  Needs a real design decision (e.g. a scoped `OSFONTDIR` per compile)
+  before attempting it. The XeTeX half (`FONTCONFIG_FILE`) is done.
 - Google Fonts allowlisted fetch source (section 7 step 4) — needs a
   concrete allowlist decision from the user first
 - UID/mount-namespace isolation for compile child processes (architecture.md section 8)

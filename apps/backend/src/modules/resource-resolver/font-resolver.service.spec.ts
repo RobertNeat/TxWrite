@@ -113,7 +113,7 @@ describe('FontResolverService', () => {
       fontName: 'Totally Unknown Font',
       resolved: false,
       message:
-        'Font "Totally Unknown Font" not found. Upload the font file to this project\'s fonts folder.',
+        'Font "Totally Unknown Font" not found. For XeLaTeX projects, upload the font file to this project\'s fonts folder.',
     });
     expect(events).toEqual(['font.resolving', 'font.failed']);
   });

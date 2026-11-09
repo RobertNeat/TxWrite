@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, existsSync, statSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  statSync,
+} from 'node:fs';
 import { basename, join } from 'node:path';
 import { parseCompileLog, type ParsedLog } from './log-parser.js';
 import { SvgConverterService } from './svg-converter.service.js';
@@ -121,6 +127,10 @@ export class CompileRunnerService {
 
     const texinputs = `.:${workDir}//:`;
     const engineFlag = ENGINE_FLAGS[engine];
+    const fontconfigFile =
+      engine === 'xelatex'
+        ? this.writeProjectFontconfig(projectDir, workDir)
+        : null;
 
     const logPath = join(workDir, `${baseName}.log`);
     const pdfPath = join(workDir, `${baseName}.pdf`);
@@ -139,6 +149,7 @@ export class CompileRunnerService {
       texinputs,
       engineFlag,
       options.forceRebuild ?? false,
+      fontconfigFile,
     );
 
     const logWasRefreshed =
@@ -206,6 +217,37 @@ export class CompileRunnerService {
     };
   }
 
+  /**
+   * Section 7 step 2 (XeTeX only — LuaTeX's luaotfload keeps its own
+   * font-name database entirely separate from fontconfig, and that database
+   * is shared/global per container, not per-project; adding a project's
+   * fonts/ there would leak that project's fonts into every other project's
+   * compiles, so this is deliberately not attempted for LuaTeX). Writes a
+   * per-compile fontconfig config into the work directory that includes the
+   * system config (so system/TeX-Live-bundled fonts are still found) and adds
+   * the project's fonts/ directory — verified empirically that this resolves
+   * a font from fonts/ without the full first-compile system font rescan a
+   * <cachedir> override would cause (not overriding <cachedir> here means
+   * fontconfig reuses its existing system cache and only scans the new
+   * project directory). Returns null (no FONTCONFIG_FILE override) when the
+   * project has no fonts/ directory, so compiles without one are unaffected.
+   */
+  private writeProjectFontconfig(
+    projectDir: string,
+    workDir: string,
+  ): string | null {
+    const projectFontsDir = join(projectDir, 'fonts');
+    if (!existsSync(projectFontsDir)) {
+      return null;
+    }
+    const fontconfigPath = join(workDir, 'fontconfig.conf');
+    writeFileSync(
+      fontconfigPath,
+      `<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>\n  <dir>${projectFontsDir}</dir>\n</fontconfig>\n`,
+    );
+    return fontconfigPath;
+  }
+
   private spawnLatexmk(
     cwd: string,
     workDir: string,
@@ -213,6 +255,7 @@ export class CompileRunnerService {
     texinputs: string,
     engineFlag: string,
     forceRebuild: boolean,
+    fontconfigFile: string | null,
   ): Promise<{
     exitCode: number | null;
     timedOut: boolean;
@@ -251,6 +294,7 @@ export class CompileRunnerService {
             ...process.env,
             TEXINPUTS: texinputs,
             max_print_line: '10000',
+            ...(fontconfigFile ? { FONTCONFIG_FILE: fontconfigFile } : {}),
           },
         },
       );
