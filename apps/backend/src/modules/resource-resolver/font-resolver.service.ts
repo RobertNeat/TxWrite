@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PackageIndexService } from './package-index.service.js';
 import { JobQueueService } from '../job-queue/job-queue.service.js';
@@ -15,6 +15,15 @@ export interface FontResolutionOutcome {
 
 const FONT_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u;
 const PACKAGE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// Google Fonts repository license subdirectories, probed in this order —
+// a family lives under exactly one. See FontResolverService.resolveFromGoogleFonts.
+const GOOGLE_FONTS_LICENSE_DIRS = ['ofl', 'apache', 'ufl'] as const;
+// Basename only, no path separators or traversal, .ttf/.otf only — METADATA.pb
+// content is untrusted (fetched from the network) and these values reach a
+// filesystem write path and a URL below, so both must be constrained.
+const GOOGLE_FONT_FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*\.(ttf|otf)$/;
+const GOOGLE_FONTS_FETCH_TIMEOUT_MS = 10000;
+const GOOGLE_FONTS_MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 /**
  * Font resolution chain (architecture.md section 7), reactive path: given a
@@ -59,14 +68,47 @@ const PACKAGE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
  * that installing the package alone, without this refresh, leaves the font
  * invisible to a recompile.
  *
- * Steps 4 (Google Fonts allowlisted source) and 5 (failure message) are
- * postponed — see docs/currentwork/plan.md.
+ * Step 4 (Google Fonts fallback) — implemented (`resolveFromGoogleFonts`).
+ * Tried only once step 3 finds no TeX Live package, via the `google/fonts`
+ * GitHub repository's raw-content CDN (no API key, not rate-limited the way
+ * `api.github.com` is — verified empirically: a METADATA.pb probe returns no
+ * `x-ratelimit-*` headers at all). The repo organizes each family under
+ * exactly one of three license directories (`ofl`/`apache`/`ufl`), keyed by
+ * the family name lowercased with spaces/punctuation stripped (verified
+ * against several real families); probed in that order since most families
+ * are OFL. **Static families only** (decision, 2026-11-09): most actively
+ * maintained families (Inter, Roboto, and similar) now ship *only* a
+ * variable font, no static fallback directory exists in the repository for
+ * them, and verified empirically against a real compile that this breaks
+ * both engines — xelatex's `xdvipdfmx` fatals outright trying to embed one
+ * ("Invalid TTC index (not TTC font)", not a bracket-in-filename parsing
+ * issue — confirmed by retesting with a bracket-free filename, same fatal
+ * error), and lualatex compiles but silently has no bold (`fontspec` only
+ * sees whichever single static instance luaotfload picked, here the
+ * default/regular weight). A family whose METADATA.pb only lists filenames
+ * containing `[` is therefore treated as unresolvable here, same as a
+ * missing font, rather than attempting a fatal/degraded install. Fetched
+ * static files are written into `$TEXMFHOME/fonts/truetype/googlefonts/`
+ * (same tree TeX-Live-installed fonts land in, step 3) so the same
+ * fontconfig `<dir>` entry and shared luaotfload database already pick them
+ * up with no new config — then the shared `refreshFontDatabases` step 3 uses
+ * runs again. A definitive "no such family" 404 across all three license
+ * dirs is cached in memory (keyed by the normalized dirname) so a half-typed
+ * name under prefetch doesn't repeat the same 3 lookups on every debounced
+ * scan; a transient failure (429/5xx/network/timeout) is never cached, since
+ * it may well succeed moments later.
+ *
+ * Step 5 (failure message) — implemented, see the final `resolveFont`
+ * fallthrough below.
  */
 @Injectable()
 export class FontResolverService {
   private readonly logger = new Logger(FontResolverService.name);
   private readonly networkFetchEnabled: boolean;
   private readonly dataDir: string;
+  // Definitive (all three license dirs 404'd) Google Fonts misses, by
+  // normalized directory name — never holds a transient-failure result.
+  private readonly googleFontsNotFound = new Set<string>();
 
   constructor(
     private readonly packageIndex: PackageIndexService,
@@ -128,7 +170,68 @@ export class FontResolverService {
     }
 
     const packageName = this.packageIndex.packageProvidingFont(fontName);
-    if (!packageName) {
+
+    if (packageName && this.networkFetchEnabled) {
+      if (!PACKAGE_NAME_PATTERN.test(packageName)) {
+        const message = 'Rejected: package name failed validation';
+        this.eventBus.emit({
+          type: 'font.failed',
+          projectId,
+          payload: { fontName, message },
+        });
+        return { fontName, resolved: false, message };
+      }
+
+      return this.jobQueue.runInstall(
+        `font-install:${packageName}`,
+        async () => {
+          try {
+            await this.runTlmgrInstall(packageName);
+            await this.refreshFontDatabases();
+            this.eventBus.emit({
+              type: 'font.resolved',
+              projectId,
+              payload: { fontName, packageName },
+            });
+            return { fontName, resolved: true };
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            this.eventBus.emit({
+              type: 'font.failed',
+              projectId,
+              payload: { fontName, packageName, message },
+            });
+            return { fontName, resolved: false, message };
+          }
+        },
+      );
+    }
+
+    if (packageName && !this.networkFetchEnabled) {
+      const message = `Font package ${packageName} is not installed and needs a download. Connect to the network and compile again.`;
+      this.eventBus.emit({
+        type: 'font.failed',
+        projectId,
+        payload: { fontName, message },
+      });
+      return { fontName, resolved: false, message };
+    }
+
+    // Step 4 (Google Fonts fallback): only tried once no TeX Live package
+    // provides the font, so unauthenticated GitHub traffic stays limited to
+    // the minority of lookups that actually need it.
+    if (this.networkFetchEnabled) {
+      const googleOutcome = await this.resolveFromGoogleFonts(
+        fontName,
+        projectId,
+      );
+      if (googleOutcome) {
+        return googleOutcome;
+      }
+    }
+
+    {
       // "Upload to fonts/" is verified to work for both xelatex
       // (CompileRunnerService's per-compile FONTCONFIG_FILE) and lualatex
       // (CompileRunnerService's per-compile isolated TEXMFVAR/TEXMFCACHE +
@@ -143,47 +246,6 @@ export class FontResolverService {
       });
       return { fontName, resolved: false, message };
     }
-
-    if (!this.networkFetchEnabled) {
-      const message = `Font package ${packageName} is not installed and needs a download. Connect to the network and compile again.`;
-      this.eventBus.emit({
-        type: 'font.failed',
-        projectId,
-        payload: { fontName, message },
-      });
-      return { fontName, resolved: false, message };
-    }
-
-    if (!PACKAGE_NAME_PATTERN.test(packageName)) {
-      const message = 'Rejected: package name failed validation';
-      this.eventBus.emit({
-        type: 'font.failed',
-        projectId,
-        payload: { fontName, message },
-      });
-      return { fontName, resolved: false, message };
-    }
-
-    return this.jobQueue.runInstall(`font-install:${packageName}`, async () => {
-      try {
-        await this.runTlmgrInstall(packageName);
-        await this.refreshFontDatabases();
-        this.eventBus.emit({
-          type: 'font.resolved',
-          projectId,
-          payload: { fontName, packageName },
-        });
-        return { fontName, resolved: true };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.eventBus.emit({
-          type: 'font.failed',
-          projectId,
-          payload: { fontName, packageName, message },
-        });
-        return { fontName, resolved: false, message };
-      }
-    });
   }
 
   private isAlreadyInstalled(fontName: string): Promise<boolean> {
@@ -254,6 +316,172 @@ export class FontResolverService {
       });
       child.on('error', () => resolve(false));
     });
+  }
+
+  /**
+   * Google Fonts fallback (resolution chain step 4, see the class doc
+   * comment above). Returns null (not "not found") on a transient failure,
+   * so the caller falls through to the step-5 message rather than reporting
+   * a wrong/misleading reason; returns an outcome in every other case.
+   */
+  private async resolveFromGoogleFonts(
+    fontName: string,
+    projectId?: string,
+  ): Promise<FontResolutionOutcome | null> {
+    const dirName = fontName.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
+    if (!dirName || this.googleFontsNotFound.has(dirName)) {
+      return null;
+    }
+
+    const metadata = await this.fetchGoogleFontsMetadata(dirName);
+    if (metadata === 'not-found') {
+      this.googleFontsNotFound.add(dirName);
+      return null;
+    }
+    if (metadata === 'transient-failure') {
+      return null;
+    }
+
+    const { licenseDir, name, fonts } = metadata;
+    if (name.toLowerCase() !== fontName.toLowerCase()) {
+      // Directory name collided with a differently-named family — treat as
+      // a miss rather than installing the wrong font.
+      this.googleFontsNotFound.add(dirName);
+      return null;
+    }
+
+    const filenames = fonts.map((font) => font.filename);
+    if (filenames.some((filename) => filename.includes('['))) {
+      // Variable-only family (see class doc comment) — not installable on
+      // either engine today. Cached as a definitive miss: no static files
+      // will ever appear for this family under the same dirname.
+      this.googleFontsNotFound.add(dirName);
+      const message = `Font "${fontName}" is only published as a variable font, which can't be embedded reliably. Upload a static .ttf/.otf file to this project's fonts folder instead.`;
+      this.eventBus.emit({
+        type: 'font.failed',
+        projectId,
+        payload: { fontName, message },
+      });
+      return { fontName, resolved: false, message };
+    }
+    if (
+      !filenames.every((filename) =>
+        GOOGLE_FONT_FILENAME_PATTERN.test(filename),
+      )
+    ) {
+      // Defensive: METADATA.pb content is untrusted network data, and these
+      // filenames reach both a download URL and a filesystem write path
+      // below — never trust them blindly, the same as a tlmgr package name.
+      this.googleFontsNotFound.add(dirName);
+      return null;
+    }
+
+    return this.jobQueue.runInstall(`font-google:${dirName}`, async () => {
+      try {
+        await this.downloadGoogleFontFiles(licenseDir, dirName, filenames);
+        await this.refreshFontDatabases();
+        const resolved = await this.isAlreadyInstalled(fontName);
+        if (!resolved) {
+          const message = `Downloaded "${fontName}" from Google Fonts, but it still doesn't match the requested name exactly.`;
+          this.eventBus.emit({
+            type: 'font.failed',
+            projectId,
+            payload: { fontName, message },
+          });
+          return { fontName, resolved: false, message };
+        }
+        this.eventBus.emit({
+          type: 'font.resolved',
+          projectId,
+          payload: { fontName },
+        });
+        return { fontName, resolved: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.eventBus.emit({
+          type: 'font.failed',
+          projectId,
+          payload: { fontName, message },
+        });
+        return { fontName, resolved: false, message };
+      }
+    });
+  }
+
+  private async fetchGoogleFontsMetadata(
+    dirName: string,
+  ): Promise<
+    | { licenseDir: string; name: string; fonts: { filename: string }[] }
+    | 'not-found'
+    | 'transient-failure'
+  > {
+    let sawTransientFailure = false;
+    for (const licenseDir of GOOGLE_FONTS_LICENSE_DIRS) {
+      const url = `https://raw.githubusercontent.com/google/fonts/main/${licenseDir}/${dirName}/METADATA.pb`;
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(GOOGLE_FONTS_FETCH_TIMEOUT_MS),
+        });
+        if (response.status === 404) {
+          continue;
+        }
+        if (!response.ok) {
+          sawTransientFailure = true;
+          continue;
+        }
+        const text = await response.text();
+        const parsed = parseGoogleFontsMetadata(text);
+        if (!parsed) {
+          sawTransientFailure = true;
+          continue;
+        }
+        return { licenseDir, ...parsed };
+      } catch {
+        // Network error/timeout — transient, try the next license dir, but
+        // never treat this as a definitive "no such family".
+        sawTransientFailure = true;
+      }
+    }
+    return sawTransientFailure ? 'transient-failure' : 'not-found';
+  }
+
+  private async downloadGoogleFontFiles(
+    licenseDir: string,
+    dirName: string,
+    filenames: string[],
+  ): Promise<void> {
+    const texmfHome = process.env.TEXMFHOME;
+    if (!texmfHome) {
+      throw new Error('TEXMFHOME is not set; cannot install Google Fonts');
+    }
+    const targetDir = join(
+      texmfHome,
+      'fonts',
+      'truetype',
+      'googlefonts',
+      dirName,
+    );
+    mkdirSync(targetDir, { recursive: true });
+
+    for (const filename of filenames) {
+      const url = `https://raw.githubusercontent.com/google/fonts/main/${licenseDir}/${dirName}/${encodeURIComponent(filename)}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(GOOGLE_FONTS_FETCH_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Google Fonts download failed for ${filename} (HTTP ${response.status})`,
+        );
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.byteLength > GOOGLE_FONTS_MAX_FILE_BYTES) {
+        throw new Error(`Google Fonts file ${filename} exceeds the size cap`);
+      }
+      const finalPath = join(targetDir, filename);
+      const tempPath = `${finalPath}.part`;
+      writeFileSync(tempPath, buffer);
+      renameSync(tempPath, finalPath);
+    }
   }
 
   private runTlmgrInstall(packageName: string): Promise<void> {
@@ -341,4 +569,39 @@ function matchesRequestedFamily(
 ): boolean {
   const requested = fontName.trim();
   return fcMatchOutput.split(',').some((family) => family.trim() === requested);
+}
+
+/**
+ * Minimal regex-based parse of a METADATA.pb file (Google Fonts' own
+ * protobuf text format) — no protobuf library dependency (CLAUDE.md rule 2:
+ * a new, more-than-this-needs dependency for a format this constrained is
+ * not worth it). Extracts only the top-level `name:` field and each `fonts {
+ * ... }` block's `filename:` field, which is all the resolver needs. Verified
+ * against several real METADATA.pb files (EB Garamond, Inter, Lato). Returns
+ * null if the file doesn't look like a METADATA.pb at all (defensive against
+ * a GitHub outage serving an HTML error page with a 200 status).
+ */
+function parseGoogleFontsMetadata(
+  text: string,
+): { name: string; fonts: { filename: string }[] } | null {
+  const nameMatch = /^name:\s*"((?:[^"\\]|\\.)*)"/m.exec(text);
+  if (!nameMatch) {
+    return null;
+  }
+  const fonts: { filename: string }[] = [];
+  const fontsBlockPattern = /fonts\s*\{([^}]*)\}/g;
+  for (const block of text.matchAll(fontsBlockPattern)) {
+    const filenameMatch = /filename:\s*"((?:[^"\\]|\\.)*)"/.exec(block[1]);
+    if (filenameMatch) {
+      fonts.push({ filename: filenameMatch[1] });
+    }
+  }
+  if (fonts.length === 0) {
+    return null;
+  }
+  return { name: unescapeProtoString(nameMatch[1]), fonts };
+}
+
+function unescapeProtoString(value: string): string {
+  return value.replaceAll(/\\(.)/g, '$1');
 }

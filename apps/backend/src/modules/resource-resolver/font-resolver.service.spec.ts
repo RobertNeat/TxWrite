@@ -176,6 +176,296 @@ describe('FontResolverService', () => {
     expect(events).toEqual(['font.resolving', 'font.failed']);
   });
 
+  describe('Google Fonts fallback (step 4)', () => {
+    let texmfHome: string;
+    let originalTexmfHome: string | undefined;
+    let fetchMock: ReturnType<typeof vi.fn>;
+    let originalFetch: typeof fetch;
+
+    const ebGaramondMetadata = `name: "EB Garamond"
+designer: "Georg Duffner"
+license: "OFL"
+fonts {
+  name: "EB Garamond"
+  style: "normal"
+  weight: 400
+  filename: "EBGaramond-Regular.ttf"
+}
+fonts {
+  name: "EB Garamond"
+  style: "italic"
+  weight: 400
+  filename: "EBGaramond-Italic.ttf"
+}
+`;
+
+    const interMetadata = `name: "Inter"
+license: "OFL"
+fonts {
+  name: "Inter"
+  style: "normal"
+  weight: 400
+  filename: "Inter[opsz,wght].ttf"
+}
+fonts {
+  name: "Inter"
+  style: "italic"
+  weight: 400
+  filename: "Inter-Italic[opsz,wght].ttf"
+}
+`;
+
+    beforeEach(() => {
+      texmfHome = mkdtempSync(join(tmpdir(), 'font-resolver-texmf-'));
+      originalTexmfHome = process.env.TEXMFHOME;
+      process.env.TEXMFHOME = texmfHome;
+      originalFetch = globalThis.fetch;
+      fetchMock = vi.fn();
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+    });
+
+    afterEach(() => {
+      rmSync(texmfHome, { recursive: true, force: true });
+      if (originalTexmfHome === undefined) {
+        delete process.env.TEXMFHOME;
+      } else {
+        process.env.TEXMFHOME = originalTexmfHome;
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    function textResponse(status: number, body = ''): Response {
+      return {
+        status,
+        ok: status >= 200 && status < 300,
+        text: () => Promise.resolve(body),
+        arrayBuffer: () =>
+          Promise.resolve(new TextEncoder().encode(body).buffer),
+      } as unknown as Response;
+    }
+
+    it('downloads a static family found under ofl/ and resolves', async () => {
+      fetchMock.mockImplementation((url: string) => {
+        if (url.endsWith('METADATA.pb')) {
+          return Promise.resolve(textResponse(200, ebGaramondMetadata));
+        }
+        return Promise.resolve(textResponse(200, 'fake-font-bytes'));
+      });
+      // fc-match (not installed) -> fc-cache -> luaotfload-tool -> fc-match (post-install, now installed)
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'),
+        fakeChild(0),
+        fakeChild(0),
+        fakeChild(0, 'EB Garamond'),
+      );
+      const { service, eventBus } = makeService(undefined);
+      const events: string[] = [];
+      eventBus.stream().subscribe((e) => events.push(e.type));
+
+      const outcome = await service.resolveFont('EB Garamond');
+
+      expect(outcome).toEqual({ fontName: 'EB Garamond', resolved: true });
+      expect(events).toEqual(['font.resolving', 'font.resolved']);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('ofl/ebgaramond/METADATA.pb'),
+        expect.anything(),
+      );
+    });
+
+    it('probes apache/ and ufl/ in order when ofl/ 404s', async () => {
+      fetchMock.mockImplementation((url: string) => {
+        if (url.includes('/ofl/')) {
+          return Promise.resolve(textResponse(404));
+        }
+        if (url.includes('/apache/')) {
+          return Promise.resolve(textResponse(404));
+        }
+        if (url.endsWith('METADATA.pb')) {
+          return Promise.resolve(textResponse(200, ebGaramondMetadata));
+        }
+        return Promise.resolve(textResponse(200, 'fake-font-bytes'));
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'),
+        fakeChild(0),
+        fakeChild(0),
+        fakeChild(0, 'EB Garamond'),
+      );
+      const { service } = makeService(undefined);
+
+      const outcome = await service.resolveFont('EB Garamond');
+
+      expect(outcome.resolved).toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('ufl/ebgaramond/METADATA.pb'),
+        expect.anything(),
+      );
+    });
+
+    it('returns a distinct message for a variable-only family, without downloading', async () => {
+      fetchMock.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('METADATA.pb')
+            ? textResponse(200, interMetadata)
+            : textResponse(200, 'should-not-be-fetched'),
+        ),
+      );
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service, eventBus } = makeService(undefined);
+      const events: string[] = [];
+      eventBus.stream().subscribe((e) => events.push(e.type));
+
+      const outcome = await service.resolveFont('Inter');
+
+      expect(outcome).toEqual({
+        fontName: 'Inter',
+        resolved: false,
+        message:
+          'Font "Inter" is only published as a variable font, which can\'t be embedded reliably. Upload a static .ttf/.otf file to this project\'s fonts folder instead.',
+      });
+      expect(events).toEqual(['font.resolving', 'font.failed']);
+      expect(
+        fetchMock.mock.calls.some(([url]: [string]) => url.endsWith('.ttf')),
+      ).toBe(false);
+    });
+
+    it('falls through to the step 5 message when the family is a genuine 404 everywhere', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(textResponse(404)));
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined);
+
+      const outcome = await service.resolveFont('ThisFontDoesNotExistAnywhere');
+
+      expect(outcome).toEqual({
+        fontName: 'ThisFontDoesNotExistAnywhere',
+        resolved: false,
+        message:
+          'Font "ThisFontDoesNotExistAnywhere" not found. Upload the font file to this project\'s fonts folder.',
+      });
+    });
+
+    it('does not cache a transient failure (e.g. rate limit) as a definitive miss', async () => {
+      let callCount = 0;
+      fetchMock.mockImplementation(() => {
+        callCount += 1;
+        return Promise.resolve(textResponse(429));
+      });
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined);
+
+      const outcome = await service.resolveFont('SomeFont');
+
+      expect(outcome.resolved).toBe(false);
+      expect(outcome.message).toMatch(/not found/);
+      // 3 license dirs probed, none cached as a definitive miss (a 429 is
+      // transient) — a second call for the same name would probe again.
+      expect(callCount).toBe(3);
+    });
+
+    it('does not call the Google Fonts fallback when NETWORK_FETCH=false', async () => {
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined, { networkFetch: 'false' });
+
+      const outcome = await service.resolveFont('SomeFont');
+
+      expect(outcome.resolved).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('retries a transient failure on the very next call instead of staying cached', async () => {
+      // Completes the "not cached" assertion above: not only does the first
+      // call not poison the cache, a second call for the same name actually
+      // re-probes (and can succeed) rather than silently reusing a stale miss.
+      let callCount = 0;
+      fetchMock.mockImplementation((url: string) => {
+        callCount += 1;
+        if (callCount <= 3) {
+          return Promise.resolve(textResponse(429));
+        }
+        return Promise.resolve(
+          url.endsWith('METADATA.pb')
+            ? textResponse(200, ebGaramondMetadata)
+            : textResponse(200, 'fake-font-bytes'),
+        );
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'), // first resolveFont: fc-match miss
+        fakeChild(0, 'DejaVu Sans'), // second resolveFont: fc-match miss
+        fakeChild(0), // fc-cache
+        fakeChild(0), // luaotfload-tool
+        fakeChild(0, 'EB Garamond'), // post-install fc-match
+      );
+      const { service } = makeService(undefined);
+
+      const first = await service.resolveFont('EB Garamond');
+      expect(first.resolved).toBe(false);
+
+      const second = await service.resolveFont('EB Garamond');
+      expect(second.resolved).toBe(true);
+      // 3 failed probes (first call), then on the second call: 1 ofl
+      // METADATA.pb hit + 2 font file downloads (EBGaramond-Regular.ttf,
+      // EBGaramond-Italic.ttf) = 3 more fetches.
+      expect(callCount).toBe(3 + 3);
+    });
+
+    it('treats a directory-name collision with a differently-named family as a miss, without installing it', async () => {
+      // "EBGaramond" and "EB Garamond" normalize to the same directory
+      // (ebgaramond), but METADATA.pb's own name field is the source of
+      // truth — a collision must not silently install the wrong family.
+      fetchMock.mockImplementation((url: string) =>
+        Promise.resolve(
+          url.endsWith('METADATA.pb')
+            ? textResponse(200, ebGaramondMetadata)
+            : textResponse(200, 'should-not-be-fetched'),
+        ),
+      );
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined);
+
+      const outcome = await service.resolveFont('EBGaramond');
+
+      expect(outcome.resolved).toBe(false);
+      expect(
+        fetchMock.mock.calls.some(([url]: [string]) => url.endsWith('.ttf')),
+      ).toBe(false);
+    });
+
+    it('deduplicates two concurrent requests for the same Google Fonts family into one download', async () => {
+      let metadataFetchCount = 0;
+      fetchMock.mockImplementation((url: string) => {
+        if (url.endsWith('METADATA.pb')) {
+          metadataFetchCount += 1;
+        }
+        return Promise.resolve(
+          url.endsWith('METADATA.pb')
+            ? textResponse(200, ebGaramondMetadata)
+            : textResponse(200, 'fake-font-bytes'),
+        );
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'), // caller A: fc-match miss
+        fakeChild(0, 'DejaVu Sans'), // caller B: fc-match miss
+        fakeChild(0), // fc-cache (one job, since jobQueue dedupes by key)
+        fakeChild(0), // luaotfload-tool
+        fakeChild(0, 'EB Garamond'), // post-install fc-match
+      );
+      const { service } = makeService(undefined);
+
+      const [outcomeA, outcomeB] = await Promise.all([
+        service.resolveFont('EB Garamond'),
+        service.resolveFont('EB Garamond'),
+      ]);
+
+      expect(outcomeA).toEqual({ fontName: 'EB Garamond', resolved: true });
+      expect(outcomeB).toEqual({ fontName: 'EB Garamond', resolved: true });
+      // Both callers reach the metadata fetch independently (dedup happens
+      // at the jobQueue.runInstall download/refresh step, not before), but
+      // only one fc-cache/luaotfload-tool/refresh cycle actually runs.
+      expect(metadataFetchCount).toBe(2);
+      expect(vi.mocked(spawn)).toHaveBeenCalledTimes(5);
+    });
+  });
+
   describe('project fonts/ folder (prefetch false-negative fix)', () => {
     let dataDir: string;
 

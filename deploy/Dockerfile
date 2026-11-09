@@ -144,6 +144,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     perl \
     fontconfig \
+    fonts-liberation \
     python3-pygments \
     librsvg2-bin \
     wget \
