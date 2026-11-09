@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { FontResolverService } from './font-resolver.service.js';
 import { JobQueueService } from '../job-queue/job-queue.service.js';
@@ -42,14 +45,17 @@ function queueSpawns(...children: ReturnType<typeof fakeChild>[]): void {
 
 function makeService(
   packageName: string | undefined,
-  options: { networkFetch?: string } = {},
+  options: { networkFetch?: string; dataDir?: string } = {},
 ): { service: FontResolverService; eventBus: EventBusService } {
   const packageIndex = {
     packageProvidingFont: () => packageName,
   } as unknown as PackageIndexService;
   const eventBus = new EventBusService();
   const config = {
-    get: (_key: string, fallback?: string) => options.networkFetch ?? fallback,
+    get: (key: string, fallback?: string) =>
+      key === 'DATA_DIR'
+        ? (options.dataDir ?? fallback)
+        : (options.networkFetch ?? fallback),
   } as unknown as ConfigService;
   const service = new FontResolverService(
     packageIndex,
@@ -113,7 +119,7 @@ describe('FontResolverService', () => {
       fontName: 'Totally Unknown Font',
       resolved: false,
       message:
-        'Font "Totally Unknown Font" not found. For XeLaTeX projects, upload the font file to this project\'s fonts folder.',
+        'Font "Totally Unknown Font" not found. Upload the font file to this project\'s fonts folder.',
     });
     expect(events).toEqual(['font.resolving', 'font.failed']);
   });
@@ -168,6 +174,94 @@ describe('FontResolverService', () => {
         'Font package ebgaramond is not installed and needs a download. Connect to the network and compile again.',
     });
     expect(events).toEqual(['font.resolving', 'font.failed']);
+  });
+
+  describe('project fonts/ folder (prefetch false-negative fix)', () => {
+    let dataDir: string;
+
+    beforeEach(() => {
+      dataDir = mkdtempSync(join(tmpdir(), 'font-resolver-test-'));
+    });
+
+    afterEach(() => {
+      rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('resolves via fc-scan when fc-match misses but the project has the font in fonts/', async () => {
+      mkdirSync(join(dataDir, 'projects', 'proj-1', 'fonts'), {
+        recursive: true,
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'), // fc-match: not globally installed
+        fakeChild(0, 'Erewhon\nErewhon Regular\n'), // fc-scan: found in fonts/
+      );
+      const { service, eventBus } = makeService(undefined, { dataDir });
+      const events: string[] = [];
+      eventBus.stream().subscribe((e) => events.push(e.type));
+
+      const outcome = await service.resolveFont('Erewhon', 'proj-1');
+
+      expect(outcome).toEqual({ fontName: 'Erewhon', resolved: true });
+      expect(events).toEqual(['font.resolving', 'font.resolved']);
+    });
+
+    it('matches case-insensitively against fc-scan output', async () => {
+      mkdirSync(join(dataDir, 'projects', 'proj-1', 'fonts'), {
+        recursive: true,
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'),
+        fakeChild(0, 'erewhon\nErewhon Regular\n'), // lowercase family, as a real TeX Live font declares it
+      );
+      const { service } = makeService(undefined, { dataDir });
+
+      const outcome = await service.resolveFont('Erewhon', 'proj-1');
+
+      expect(outcome.resolved).toBe(true);
+    });
+
+    it('does not spawn fc-scan when the project has no fonts/ directory', async () => {
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined, { dataDir });
+
+      const outcome = await service.resolveFont(
+        'ThisFontDoesNotExistAnywhere',
+        'proj-with-no-fonts-dir',
+      );
+
+      expect(outcome.resolved).toBe(false);
+      expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not spawn fc-scan when no projectId is given', async () => {
+      queueSpawns(fakeChild(0, 'DejaVu Sans'));
+      const { service } = makeService(undefined, { dataDir });
+
+      const outcome = await service.resolveFont('ThisFontDoesNotExistAnywhere');
+
+      expect(outcome.resolved).toBe(false);
+      expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls through to the package-lookup message when fc-scan finds no match', async () => {
+      mkdirSync(join(dataDir, 'projects', 'proj-1', 'fonts'), {
+        recursive: true,
+      });
+      queueSpawns(
+        fakeChild(0, 'DejaVu Sans'),
+        fakeChild(0, 'SomeOtherFont\nSome Other Font\n'),
+      );
+      const { service } = makeService(undefined, { dataDir });
+
+      const outcome = await service.resolveFont('Erewhon', 'proj-1');
+
+      expect(outcome).toEqual({
+        fontName: 'Erewhon',
+        resolved: false,
+        message:
+          "Font \"Erewhon\" not found. If it's in this project's fonts folder, the name used in the document must match the font file's own name exactly.",
+      });
+    });
   });
 
   it('reports a failure when TEXMFHOME is not set', async () => {

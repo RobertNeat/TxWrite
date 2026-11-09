@@ -8,7 +8,7 @@ import {
   existsSync,
   statSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { parseCompileLog, type ParsedLog } from './log-parser.js';
 import { SvgConverterService } from './svg-converter.service.js';
 import { PandocConverterService } from './pandoc-converter.service.js';
@@ -131,6 +131,10 @@ export class CompileRunnerService {
       engine === 'xelatex'
         ? this.writeProjectFontconfig(projectDir, workDir)
         : null;
+    const luaFontEnv =
+      engine === 'lualatex'
+        ? this.buildProjectLuaFontEnv(projectDir, workDir)
+        : null;
 
     const logPath = join(workDir, `${baseName}.log`);
     const pdfPath = join(workDir, `${baseName}.pdf`);
@@ -150,6 +154,7 @@ export class CompileRunnerService {
       engineFlag,
       options.forceRebuild ?? false,
       fontconfigFile,
+      luaFontEnv,
     );
 
     const logWasRefreshed =
@@ -218,11 +223,8 @@ export class CompileRunnerService {
   }
 
   /**
-   * Section 7 step 2 (XeTeX only — LuaTeX's luaotfload keeps its own
-   * font-name database entirely separate from fontconfig, and that database
-   * is shared/global per container, not per-project; adding a project's
-   * fonts/ there would leak that project's fonts into every other project's
-   * compiles, so this is deliberately not attempted for LuaTeX). Writes a
+   * Section 7 step 2, XeTeX. luaotfload (LuaTeX) does not use fontconfig at
+   * all — see buildProjectLuaFontEnv for its own, separate mechanism. Writes a
    * per-compile fontconfig config into the work directory that includes the
    * system config (so system/TeX-Live-bundled fonts are still found) and adds
    * the project's fonts/ directory — verified empirically that this resolves
@@ -248,6 +250,51 @@ export class CompileRunnerService {
     return fontconfigPath;
   }
 
+  /**
+   * Section 7 step 2, LuaTeX. See architecture.md section 7 for the full
+   * rationale and empirical verification; the two gotchas that matter for
+   * correctness here: TEXMFVAR and TEXMFCACHE must be isolated *together*
+   * (pointing only TEXMFCACHE elsewhere while TEXMFVAR stays shared makes
+   * luaotfload hard-fail with "no writeable cache path, quitting"), and
+   * TEXFONTMAPS must separately point back at the shared tree's
+   * fonts/map/pdftex directory or pdftex.map falls back to the image's own
+   * ephemeral copy, losing every lazily-installed font's Type1 map entry.
+   *
+   * The isolated cache is namespaced by the shared tree's own snapshot-key
+   * directory name (e.g. "tl-2026-10-01"), not just by project ID, so a
+   * pinned-release upgrade (section 6.6) doesn't leave a project's cache
+   * resolving fonts against stale absolute paths into an orphaned snapshot.
+   *
+   * Returns null when the project has no fonts/ directory, so compiles
+   * without one keep using the shared TEXMFVAR/TEXMFCACHE as today.
+   */
+  private buildProjectLuaFontEnv(
+    projectDir: string,
+    workDir: string,
+  ): Record<string, string> | null {
+    const projectFontsDir = join(projectDir, 'fonts');
+    if (!existsSync(projectFontsDir)) {
+      return null;
+    }
+    const sharedTexmfVar = process.env.TEXMFVAR;
+    if (!sharedTexmfVar) {
+      return null;
+    }
+    const snapshotKey = basename(dirname(sharedTexmfVar));
+    // luaotfload itself creates a luatex-cache/ subdirectory under whatever
+    // TEXMFVAR points to, so this directory's own name is deliberately not
+    // "luatex-cache" too — that would otherwise nest as .../lua-fonts/
+    // luatex-cache/luatex-cache/...
+    const isolatedCacheDir = join(workDir, 'lua-fonts', snapshotKey);
+    mkdirSync(isolatedCacheDir, { recursive: true });
+    return {
+      TEXMFVAR: isolatedCacheDir,
+      TEXMFCACHE: isolatedCacheDir,
+      OSFONTDIR: projectFontsDir,
+      TEXFONTMAPS: `${join(sharedTexmfVar, 'fonts', 'map', 'pdftex')}//:`,
+    };
+  }
+
   private spawnLatexmk(
     cwd: string,
     workDir: string,
@@ -256,6 +303,7 @@ export class CompileRunnerService {
     engineFlag: string,
     forceRebuild: boolean,
     fontconfigFile: string | null,
+    luaFontEnv: Record<string, string> | null,
   ): Promise<{
     exitCode: number | null;
     timedOut: boolean;
@@ -295,6 +343,7 @@ export class CompileRunnerService {
             TEXINPUTS: texinputs,
             max_print_line: '10000',
             ...(fontconfigFile ? { FONTCONFIG_FILE: fontconfigFile } : {}),
+            ...luaFontEnv,
           },
         },
       );

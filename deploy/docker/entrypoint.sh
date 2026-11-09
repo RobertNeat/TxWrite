@@ -51,6 +51,10 @@ mkdir -p "$TEXMFHOME" "$TEXMFVAR" "${CACHE_DIR}/fonts" "${CACHE_DIR}/downloads" 
 if [ ! -d "${TEXMFHOME}/tlpkg" ]; then
   tlmgr --usertree "$TEXMFHOME" init-usertree
 fi
+# tlmgr --usermode remove fails outright ("backupdir ... is not a directory")
+# on a usertree that has never had a removal before, since init-usertree does
+# not create this directory itself — verified empirically.
+mkdir -p "${TEXMFHOME}/tlpkg/backups"
 # --usermode must come before the action, and the repository option is set
 # without a leading "--" (it's the option *name*, not a flag).
 tlmgr --usertree "$TEXMFHOME" --usermode option repository "$TEX_REPO_URL"

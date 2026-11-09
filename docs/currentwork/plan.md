@@ -4,28 +4,6 @@
 
 # Next cycles
 
-- **LuaTeX project `fonts/` folder support, with shared caching.** Give
-  LuaTeX feature parity with XeTeX's per-compile `FONTCONFIG_FILE`
-  (architecture.md §7 step 2), without the cross-project leak a shared
-  `luaotfload` database would otherwise cause.
-  - First investigate whether `luaotfload` honors a per-process `OSFONTDIR`
-    override scoped to one compile, without forcing a full
-    `luaotfload-tool -u` refresh of the shared database each time — verify
-    this empirically in the real container before writing resolver code
-    (same standard as this session's font work: real logs/behavior, not
-    documentation paraphrase).
-  - Once a font is resolved for *any* project (TeX-Live package install,
-    or a project-local upload), it should become visible to every other
-    project on the same install without re-fetching — i.e. the resolution
-    is cached at the install/download level, not re-done per project. A
-    font must be used once by some project to appear as available platform-
-    wide afterward. This applies to the TeX-Live-package path already (lazy
-    installs already land in the shared `TEXMFHOME` tree); confirm the same
-    sharing model extends cleanly to whatever `OSFONTDIR` scoping is chosen
-    for the per-project-upload case.
-  - If no clean per-compile scoping exists for `luaotfload`, stop and report
-    back before falling back to a leaky shared-registration approach.
-
 - **Google Fonts fallback source (architecture.md §7 step 4).**
   - Source: the `google/fonts` GitHub repository's raw content API (no API
     key required).
