@@ -42,6 +42,29 @@ describe('PrefetchWatcherService', () => {
     expect(resolveAndInstall).toHaveBeenCalledWith('tikz.sty', 'p1');
   });
 
+  it('promotes on the delay timer alone, with no second scan call', () => {
+    const { service, resolveAndInstall } = makeService(4000);
+    service.scan('p1', 'main.tex', '\\usepackage{tikz}');
+
+    vi.advanceTimersByTime(4001);
+
+    expect(resolveAndInstall).toHaveBeenCalledWith('tikz.sty', 'p1');
+  });
+
+  it('promotes each reference only once even as scans keep arriving', () => {
+    const { service, resolveAndInstall } = makeService(4000);
+    service.scan('p1', 'main.tex', '\\usepackage{tikz}');
+    vi.advanceTimersByTime(4001);
+    expect(resolveAndInstall).toHaveBeenCalledTimes(1);
+
+    service.scan('p1', 'main.tex', '\\usepackage{tikz}');
+    vi.advanceTimersByTime(4001);
+    service.scan('p1', 'main.tex', '\\usepackage{tikz}');
+    vi.advanceTimersByTime(4001);
+
+    expect(resolveAndInstall).toHaveBeenCalledTimes(1);
+  });
+
   it('does not promote before the delay has elapsed', () => {
     const { service, resolveAndInstall } = makeService(4000);
     service.scan('p1', 'main.tex', '\\usepackage{tikz}');
@@ -85,27 +108,26 @@ describe('PrefetchWatcherService', () => {
   it('tracks candidates per (project, file) independently', () => {
     const { service, resolveAndInstall } = makeService(4000);
     service.scan('p1', 'a.tex', '\\usepackage{tikz}');
+
+    vi.advanceTimersByTime(3000);
     service.scan('p1', 'b.tex', '\\usepackage{amsmath}');
 
-    vi.advanceTimersByTime(4001);
-    service.scan('p1', 'a.tex', '\\usepackage{tikz}');
-
+    vi.advanceTimersByTime(1001);
     expect(resolveAndInstall).toHaveBeenCalledWith('tikz.sty', 'p1');
     expect(resolveAndInstall).not.toHaveBeenCalledWith('amsmath.sty', 'p1');
+
+    vi.advanceTimersByTime(3000);
+    expect(resolveAndInstall).toHaveBeenCalledWith('amsmath.sty', 'p1');
   });
 
-  it('clearProject drops all pending candidates for that project only', () => {
+  it('tracks candidates per project independently', () => {
     const { service, resolveAndInstall } = makeService(4000);
     service.scan('p1', 'main.tex', '\\usepackage{tikz}');
     service.scan('p2', 'main.tex', '\\usepackage{amsmath}');
 
-    service.clearProject('p1');
-
     vi.advanceTimersByTime(4001);
-    service.scan('p1', 'main.tex', '\\usepackage{tikz}');
-    service.scan('p2', 'main.tex', '\\usepackage{amsmath}');
 
-    expect(resolveAndInstall).not.toHaveBeenCalledWith('tikz.sty', 'p1');
+    expect(resolveAndInstall).toHaveBeenCalledWith('tikz.sty', 'p1');
     expect(resolveAndInstall).toHaveBeenCalledWith('amsmath.sty', 'p2');
   });
 });

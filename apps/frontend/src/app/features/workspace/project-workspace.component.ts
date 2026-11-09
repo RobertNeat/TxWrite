@@ -99,6 +99,11 @@ export class ProjectWorkspaceComponent implements OnInit {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       void this.loadProject(params.get('projectId') ?? '');
     });
+    this.destroyRef.onDestroy(() => {
+      if (this.scanTimeout) {
+        clearTimeout(this.scanTimeout);
+      }
+    });
   }
 
   private async loadProject(id: string): Promise<void> {

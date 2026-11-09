@@ -8,29 +8,36 @@ interface CandidateKey {
   file: string;
 }
 
+interface Candidate {
+  files: Set<string>;
+  fonts: Set<string>;
+  promoted: Set<string>;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 /**
  * Proactive prefetch (architecture.md section 6.4): scans edited content for
  * package/font references and installs them in the background before the
- * user ever presses compile. A reference only gets promoted to an install if
- * it is still present the next time this same (project, file) is scanned
- * after the configured delay — this debounces against half-typed names
- * without needing a literal setTimeout per reference (a `scan` call close
- * enough in time to the previous one for the same file simply won't look
- * "still there after X seconds" yet, since promotion checks wall-clock time,
- * not a per-candidate timer). Installs always go through
- * ResourceResolverService, which itself serializes through JobQueueService —
- * so a prefetch install and a compile-retry install of the same package can
- * never race each other (section 6.2).
+ * user ever presses compile. A reference is promoted to a background install
+ * only once it has survived `PREFETCH_DELAY_MS` without being removed from
+ * the scanned content, via a timer started the moment it first appears (not
+ * on the next `scan()` call — a single scan, e.g. paste-then-compile with no
+ * further edits, must still promote once its own delay elapses). Each
+ * reference is promoted at most once per (project, file) — once installed
+ * via tlmgr it won't show up as "missing" again, but re-promoting on every
+ * subsequent scan would otherwise queue a redundant tlmgr run on every
+ * debounced edit (harmless since ResourceResolverService now treats tlmgr's
+ * "already present" as success, but still wasted work and an extra
+ * install.queued/install.finished pair in the status bar for no reason).
+ * Installs always go through ResourceResolverService, which itself
+ * serializes through JobQueueService — so a prefetch install and a
+ * compile-retry install of the same package can never race each other
+ * (section 6.2).
  */
 @Injectable()
 export class PrefetchWatcherService implements OnModuleDestroy {
   private readonly delayMs: number;
-  // Keyed by `${projectId}:${file}` -> first-seen-at-this-reference-set timestamp,
-  // reset whenever the scanned reference set for that key changes.
-  private readonly pending = new Map<
-    string,
-    { files: Set<string>; fonts: Set<string>; firstSeenAt: number }
-  >();
+  private readonly pending = new Map<string, Candidate>();
 
   constructor(
     private readonly resourceResolver: ResourceResolverService,
@@ -40,14 +47,18 @@ export class PrefetchWatcherService implements OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    for (const candidate of this.pending.values()) {
+      clearTimeout(candidate.timer);
+    }
     this.pending.clear();
   }
 
   /**
-   * Scans `content` for a project file and promotes any reference that has
-   * been stable (present, unchanged) for at least `PREFETCH_DELAY_MS` across
-   * calls to a background install. Returns the file references currently
-   * queued as candidates (for observability in tests/debugging only).
+   * Scans `content` for a project file. Starts (or restarts) a delay timer
+   * whenever the reference set for this (project, file) changes, and arms a
+   * fresh timer for any newly-introduced reference. Returns the file
+   * references currently present (for observability in tests/debugging
+   * only).
    */
   scan(projectId: string, file: string, content: string): string[] {
     const key = this.keyFor({ projectId, file });
@@ -62,11 +73,11 @@ export class PrefetchWatcherService implements OnModuleDestroy {
       setsEqual(existing.fonts, fontSet);
 
     if (unchanged) {
-      if (Date.now() - existing.firstSeenAt >= this.delayMs) {
-        this.promote(projectId, fileSet);
-        this.pending.delete(key);
-      }
       return files;
+    }
+
+    if (existing) {
+      clearTimeout(existing.timer);
     }
 
     if (fileSet.size === 0 && fontSet.size === 0) {
@@ -74,30 +85,41 @@ export class PrefetchWatcherService implements OnModuleDestroy {
       return files;
     }
 
-    this.pending.set(key, {
-      files: fileSet,
-      fonts: fontSet,
-      firstSeenAt: Date.now(),
-    });
+    // Dropped references can't be re-promoted on reappearance without a
+    // fresh stability window, so only keep "already promoted" entries for
+    // references still present.
+    const promoted = new Set(
+      [...(existing?.promoted ?? [])].filter((name) => fileSet.has(name)),
+    );
+
+    const timer = setTimeout(() => {
+      this.promote(projectId, key, fileSet, promoted);
+    }, this.delayMs);
+
+    this.pending.set(key, { files: fileSet, fonts: fontSet, promoted, timer });
     return files;
   }
 
-  /** Drops all pending candidates for a project (e.g. on project delete). */
-  clearProject(projectId: string): void {
-    for (const key of this.pending.keys()) {
-      if (key.startsWith(`${projectId}:`)) {
-        this.pending.delete(key);
-      }
-    }
-  }
-
-  private promote(projectId: string, files: Set<string>): void {
+  private promote(
+    projectId: string,
+    key: string,
+    files: Set<string>,
+    promoted: Set<string>,
+  ): void {
     for (const fileName of files) {
+      if (promoted.has(fileName)) {
+        continue;
+      }
+      promoted.add(fileName);
       // Fire-and-forget: resolveAndInstall already emits install.* events and
       // is deduplicated/serialized by JobQueueService, so a prefetch promote
       // racing a compile-retry install of the same package just joins the
       // same in-flight promise rather than double-installing.
       void this.resourceResolver.resolveAndInstall(fileName, projectId);
+    }
+    const candidate = this.pending.get(key);
+    if (candidate) {
+      candidate.promoted = promoted;
     }
   }
 

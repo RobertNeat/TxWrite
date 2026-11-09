@@ -128,16 +128,17 @@ export class ResourceResolverService {
       child.on('exit', (code) => {
         if (code === 0) {
           if (/already present/i.test(output)) {
-            // tlmgr exits 0 for a package that's already installed, which this
-            // app should never see (already-installed packages are excluded
-            // from the index at build time) — if it happens anyway, treat it
-            // as a failure rather than a false "installed" that would make the
-            // retry loop in CompileService spin without ever making progress.
-            reject(
-              new Error(
-                `tlmgr reported "${packageName}" already present, but it was expected to be missing: ${output.trim()}`,
-              ),
-            );
+            // Legitimately reachable now that prefetch (PrefetchWatcherService)
+            // can install a package in the background before the compile
+            // retry loop ever tries it: by the time CompileService calls
+            // resolveAndInstall for the same missing file, tlmgr correctly
+            // reports it as already present. Treat this as success — the
+            // package genuinely is installed — not a failure; the retry
+            // loop's own `attempted` set (CompileService) already bounds each
+            // file to one resolveAndInstall call per compile, so this can't
+            // spin even if the install actually never lands.
+            this.logger.log(`Package already present: ${packageName}`);
+            resolve();
             return;
           }
           this.logger.log(`Installed package: ${packageName}`);

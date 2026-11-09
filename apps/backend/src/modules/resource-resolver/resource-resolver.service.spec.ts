@@ -1,8 +1,32 @@
+import { EventEmitter } from 'node:events';
 import { ConfigService } from '@nestjs/config';
 import { ResourceResolverService } from './resource-resolver.service.js';
 import { JobQueueService } from '../job-queue/job-queue.service.js';
 import { EventBusService } from '../events/event-bus.service.js';
 import type { PackageIndexService } from './package-index.service.js';
+
+vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
+const { spawn } = await import('node:child_process');
+
+function fakeChild(
+  exitCode: number,
+  stdout: string,
+): EventEmitter & {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+} {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+  };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  queueMicrotask(() => {
+    child.stdout.emit('data', Buffer.from(stdout));
+    child.emit('exit', exitCode);
+  });
+  return child;
+}
 
 function makeService(
   packageName: string | undefined,
@@ -84,6 +108,28 @@ describe('ResourceResolverService', () => {
 
     expect(a).toEqual(b);
     expect(a?.installed).toBe(false);
+  });
+
+  it('treats tlmgr "already present" (exit 0) as a successful install, not a failure', async () => {
+    process.env.TEXMFHOME = '/tmp/texmf-home';
+    vi.mocked(spawn).mockReturnValue(
+      fakeChild(
+        0,
+        'package polyglossia already present, not reinstalling',
+      ) as never,
+    );
+    const { service, eventBus } = makeService('polyglossia');
+    const events: string[] = [];
+    eventBus.stream().subscribe((e) => events.push(e.type));
+
+    const outcome = await service.resolveAndInstall('polyglossia.sty');
+
+    expect(outcome).toEqual({ packageName: 'polyglossia', installed: true });
+    expect(events).toEqual([
+      'install.queued',
+      'install.started',
+      'install.finished',
+    ]);
   });
 
   it('refuses to install and returns the section 6.7 message when NETWORK_FETCH=false', async () => {
