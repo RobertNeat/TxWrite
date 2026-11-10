@@ -35,7 +35,7 @@ services:
         TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
         TL_SNAPSHOT_KEY: "2026-10-01"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:10800:10800"
     environment:
       # Container-specific values that must override whatever the shared
       # root .env sets for local (non-Docker) dev — e.g. .env's HOST/DATA_DIR
@@ -43,7 +43,7 @@ services:
       # filesystem/network namespace. Tunables that are fine to share (JWT
       # TTLs, COOKIE_SECURE, etc.) are deliberately left out of this block so
       # editing the root .env actually takes effect here via env_file above.
-      PORT: 3000
+      PORT: 10800
       HOST: 0.0.0.0
       DATA_DIR: /data
       CACHE_DIR: /cache

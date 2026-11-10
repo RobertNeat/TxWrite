@@ -1,0 +1,58 @@
+name: Production deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit SHA to check, build and deploy
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-pipeline
+  cancel-in-progress: false
+
+jobs:
+  context:
+    runs-on: self-hosted
+    timeout-minutes: 3
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        name: Resolve source commit
+        shell: bash
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          sha="${INPUT_SHA:-$EVENT_SHA}"
+          [[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "A full commit SHA is required: $sha" >&2; exit 2; }
+          echo "sha=${sha,,}" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: context
+    uses: ./.github/workflows/_job_check.yaml
+    with:
+      sha: ${{ needs.context.outputs.sha }}
+
+  build:
+    needs: [context, check]
+    uses: ./.github/workflows/_job_build.yaml
+    with:
+      sha: ${{ needs.context.outputs.sha }}
+
+  deploy:
+    needs: [context, build]
+    uses: ./.github/workflows/_job_deploy.yaml
+    with:
+      sha: ${{ needs.context.outputs.sha }}
+

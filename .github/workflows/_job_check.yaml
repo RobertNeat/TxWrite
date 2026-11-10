@@ -1,0 +1,70 @@
+name: Reusable check jobs
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: self-hosted
+    timeout-minutes: 3
+    outputs:
+      projects: ${{ steps.config.outputs.projects }}
+      runner_labels: ${{ steps.config.outputs.runner_labels }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - id: config
+        name: Validate project definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg=.github/ci/projects.json
+          bash .github/steps/validate_projects.sh "$cfg"
+          echo "projects=$(jq -c '{include: [.projects[] | {project: .}]}' "$cfg")" >> "$GITHUB_OUTPUT"
+          echo "runner_labels=$(jq -c '.pipeline.runner_labels' "$cfg")" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: Check / ${{ matrix.project.name }}
+    needs: matrix
+    runs-on: ${{ fromJSON(needs.matrix.outputs.runner_labels) }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Check Node application
+        if: matrix.project.type == 'node'
+        shell: bash
+        env:
+          PROJECT_PATH: ${{ matrix.project.path }}
+          RUNTIME_VERSION: ${{ matrix.project.version }}
+          PACKAGE_MANAGER: ${{ matrix.project.package_manager }}
+          PACKAGE_NAME: ${{ matrix.project.package_name }}
+          CHECK_SCRIPT: ${{ matrix.project.check_script }}
+        run: bash .github/steps/check_node.sh
+      - name: Check Python application
+        if: matrix.project.type == 'python'
+        shell: bash
+        env:
+          PROJECT_PATH: ${{ matrix.project.path }}
+          RUNTIME_VERSION: ${{ matrix.project.version }}
+        run: bash .github/steps/check_python.sh
+      - name: Check Spring Boot application
+        if: matrix.project.type == 'springboot'
+        shell: bash
+        env:
+          PROJECT_PATH: ${{ matrix.project.path }}
+          RUNTIME_VERSION: ${{ matrix.project.version }}
+          BUILD_TOOL: ${{ matrix.project.build_tool }}
+        run: bash .github/steps/check_spring.sh

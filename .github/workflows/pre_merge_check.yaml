@@ -1,0 +1,26 @@
+name: Pre-merge check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+      - "!release_*"
+      - "!deploy_*"
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: ./.github/workflows/_job_check.yaml
+    with:
+      sha: ${{ github.event.pull_request.head.sha || github.sha }}

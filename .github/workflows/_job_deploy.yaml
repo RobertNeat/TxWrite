@@ -1,0 +1,62 @@
+name: Reusable deployment job
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  config:
+    runs-on: self-hosted
+    timeout-minutes: 3
+    outputs:
+      environment: ${{ steps.deploy.outputs.environment }}
+      host: ${{ steps.deploy.outputs.host }}
+      user: ${{ steps.deploy.outputs.user }}
+      registry: ${{ steps.deploy.outputs.registry }}
+      compose_file: ${{ steps.deploy.outputs.compose_file }}
+      config_file: ${{ steps.deploy.outputs.config_file }}
+      remote_dir: ${{ steps.deploy.outputs.remote_dir }}
+      runner_labels: ${{ steps.deploy.outputs.runner_labels }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - id: deploy
+        name: Read deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg=.github/ci/projects.json
+          bash .github/steps/validate_projects.sh "$cfg"
+          for key in environment host user registry compose_file config_file remote_dir; do
+            echo "$key=$(jq -r --arg key "$key" '.deploy[$key]' "$cfg")" >> "$GITHUB_OUTPUT"
+          done
+          echo "runner_labels=$(jq -c '.pipeline.runner_labels' "$cfg")" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: config
+    runs-on: ${{ fromJSON(needs.config.outputs.runner_labels) }}
+    timeout-minutes: 5
+    environment: ${{ needs.config.outputs.environment }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Deploy exact image set
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ needs.config.outputs.host }}
+          DEPLOY_USER: ${{ needs.config.outputs.user }}
+          REGISTRY: ${{ needs.config.outputs.registry }}
+          COMPOSE_FILE: ${{ needs.config.outputs.compose_file }}
+          CONFIG_FILE: ${{ needs.config.outputs.config_file }}
+          REMOTE_DIR: ${{ needs.config.outputs.remote_dir }}
+          SHA: ${{ inputs.sha }}
+        run: bash .github/steps/deploy_compose_ssh.sh
+

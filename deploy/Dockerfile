@@ -198,18 +198,18 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
-ENV PORT=3000
+ENV PORT=10800
 ENV DATA_DIR=/data
 ENV CACHE_DIR=/cache
 
-EXPOSE 3000
+EXPOSE 10800
 VOLUME ["/data", "/cache"]
 
 # start-period covers entrypoint.sh's blocking luaotfload-tool -u warmup on a
 # fresh /cache volume, which otherwise makes a healthy container briefly
 # report unhealthy on first start.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
-    CMD wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1
+    CMD wget -q -O /dev/null http://127.0.0.1:10800/api/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "apps/backend/dist/main.js"]

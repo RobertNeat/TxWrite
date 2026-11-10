@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "pipeline": {
+    "runner_labels": ["self-hosted", "Linux", "X64", "production"],
+    "project_roots": []
+  },
+  "projects": [
+    {
+      "name": "txwrite",
+      "type": "node",
+      "framework": "nestjs",
+      "version": "24",
+      "path": ".",
+      "package_manager": "pnpm",
+      "build_tool": null,
+      "check_script": "check",
+      "dockerfile": "deploy/Dockerfile",
+      "image": "txwrite/app",
+      "package_name": "LaTEX_Markdown_Editor",
+      "Trivy_exceptions": [],
+      "build_output": null,
+      "server_config": null,
+      "start_command": "node apps/backend/dist/main.js",
+      "ports": { "host": 10800, "container": 10800 }
+    }
+  ],
+  "deploy": {
+    "environment": "production",
+    "host": "192.168.1.160",
+    "user": "docker_deploy",
+    "registry": "192.168.1.162:5000",
+    "compose_file": "deploy/compose.prod.yml",
+    "config_file": "deploy/config.env.example",
+    "remote_dir": "/home/docker_deploy/txwrite"
+  }
+}

@@ -1,0 +1,90 @@
+name: Reusable image build jobs
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: self-hosted
+    timeout-minutes: 3
+    outputs:
+      projects: ${{ steps.config.outputs.projects }}
+      registry: ${{ steps.config.outputs.registry }}
+      runner_labels: ${{ steps.config.outputs.runner_labels }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - id: config
+        name: Read image definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfg=.github/ci/projects.json
+          bash .github/steps/validate_projects.sh "$cfg"
+          echo "projects=$(jq -c '{include: [.projects[] | {project: .}]}' "$cfg")" >> "$GITHUB_OUTPUT"
+          echo "registry=$(jq -r '.deploy.registry' "$cfg")" >> "$GITHUB_OUTPUT"
+          echo "runner_labels=$(jq -c '.pipeline.runner_labels' "$cfg")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build / ${{ matrix.project.name }}
+    needs: matrix
+    runs-on: ${{ fromJSON(needs.matrix.outputs.runner_labels) }}
+    # TxWrite's image includes an uncached TeX Live scheme-basic install
+    # (~2GB total image, see docs/project_assumptons/technology.md section 9);
+    # 25 minutes was fine for the Spring/Angular images this pipeline was
+    # originally written for but is tight for a cold TeX Live download+install.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Build image
+        shell: bash
+        env:
+          REGISTRY: ${{ needs.matrix.outputs.registry }}
+          PROJECT_JSON: ${{ toJSON(matrix.project) }}
+          SHA: ${{ inputs.sha }}
+        run: bash .github/steps/create_docker_image.sh
+      - name: Scan image
+        shell: bash
+        env:
+          REGISTRY: ${{ needs.matrix.outputs.registry }}
+          IMAGE: ${{ matrix.project.image }}
+          SHA: ${{ inputs.sha }}
+          TRIVY_EXCEPTIONS: ${{ toJSON(matrix.project.Trivy_exceptions) }}
+        run: bash .github/steps/scan_docker_image.sh
+      - name: Push immutable image
+        shell: bash
+        env:
+          REGISTRY: ${{ needs.matrix.outputs.registry }}
+          IMAGE: ${{ matrix.project.image }}
+          SHA: ${{ inputs.sha }}
+        run: bash .github/steps/push_local_image.sh
+
+  cleanup:
+    name: Clean old runner images
+    needs: [matrix, build]
+    if: ${{ always() && needs.matrix.result == 'success' }}
+    runs-on: ${{ fromJSON(needs.matrix.outputs.runner_labels) }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.sha }}
+      - name: Keep one local image per application
+        shell: bash
+        env:
+          SHA: ${{ inputs.sha }}
+        run: bash .github/steps/cleanup_runner_images.sh
+

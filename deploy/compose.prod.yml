@@ -1,0 +1,39 @@
+# Canonical compose file for production deploys. Unlike deploy/docker-compose.yml
+# (local `docker compose up --build`), this file never builds — deploy only copies
+# this file to the host (see .github/steps/deploy_compose_ssh.sh) and runs the
+# image already pushed to the local registry under the deploy SHA.
+#
+# Image/port placeholders and their defaults must match
+# .github/ci/projects.json's "txwrite" project entry (name "txwrite" ->
+# TXWRITE_* variable prefix); .github/steps/validate_projects.sh checks this.
+name: txwrite
+
+services:
+  app:
+    image: ${REGISTRY:-192.168.1.162:5000}/${TXWRITE_IMAGE:-txwrite/app}:${IMAGE_TAG:-dev}
+    restart: unless-stopped
+    env_file:
+      - path: config.env
+        required: false
+    ports:
+      - "${TXWRITE_HOST_PORT:-10800}:${TXWRITE_CONTAINER_PORT:-10800}"
+    environment:
+      # Container-specific values; must stay set here (not left to config.env)
+      # so the app binds on all interfaces inside the container and uses the
+      # volumes below, regardless of what else config.env sets.
+      PORT: 10800
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      CACHE_DIR: /cache
+      PACKAGE_INDEX_PATH: /opt/app/package-index.json.gz
+      # Frozen dated snapshot (see docs/project_assumptons/architecture.md
+      # section 6.6); must match the TEX_REPO_URL build ARG baked into the
+      # deployed image, or deploy/docker/entrypoint.sh refuses to start.
+      TEX_REPO_URL: https://texlive.info/tlnet-archive/2026/10/01/tlnet/
+    volumes:
+      - data:/data
+      - cache:/cache
+
+volumes:
+  data:
+  cache:
