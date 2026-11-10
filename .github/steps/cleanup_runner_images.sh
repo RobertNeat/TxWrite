@@ -29,5 +29,13 @@ while IFS= read -r image; do
   done
 done < <(jq -r '.projects[].image' "$cfg")
 
+
+# Build cache and dangling layers accumulate across runs and are not covered
+# by the per-project image pruning above; left unchecked they fill the
+# runner's 30G loop-mounted disk (see "no space left on device" during
+# layer extraction on 2026-11-10).
+docker builder prune -af
+docker image prune -af
+
 docker system df
 
