@@ -16,6 +16,8 @@
 
 <!-- TODO: wstaw tutaj demo nagranie (mp4) z przejściem przez główny interfejs -->
 
+https://github.com/user-attachments/assets/f80a342a-150c-4410-80f6-bf7e1e64f7cb
+
 ## Funkcjonalności
 
 ### Logowanie i profile
