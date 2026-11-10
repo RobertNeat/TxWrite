@@ -60,26 +60,29 @@ export class EmailVerificationService {
   ) {}
 
   private getRow(userId: string): CodeRow | undefined {
-    return this.database.db
-      .prepare('SELECT * FROM email_verification_codes WHERE user_id = ?')
-      .get(userId) as unknown as CodeRow | undefined;
+    return this.database.get<CodeRow>(
+      'SELECT * FROM email_verification_codes WHERE user_id = ?',
+      userId,
+    );
   }
 
   /** Issues (or re-issues) a code and emails it. Used by register and resend. */
   async issue(userId: string, email: string): Promise<void> {
     const code = generateCode();
     const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();
-    this.database.db
-      .prepare(
-        `INSERT INTO email_verification_codes (user_id, code_hash, expires_at, attempts, created_at)
-         VALUES (?, ?, ?, 0, ?)
-         ON CONFLICT (user_id) DO UPDATE SET
-           code_hash = excluded.code_hash,
-           expires_at = excluded.expires_at,
-           attempts = 0,
-           created_at = excluded.created_at`,
-      )
-      .run(userId, hashCode(code), expiresAt, new Date().toISOString());
+    this.database.run(
+      `INSERT INTO email_verification_codes (user_id, code_hash, expires_at, attempts, created_at)
+       VALUES (?, ?, ?, 0, ?)
+       ON CONFLICT (user_id) DO UPDATE SET
+         code_hash = excluded.code_hash,
+         expires_at = excluded.expires_at,
+         attempts = 0,
+         created_at = excluded.created_at`,
+      userId,
+      hashCode(code),
+      expiresAt,
+      new Date().toISOString(),
+    );
     await this.mail.sendVerificationCode(email, code);
   }
 
@@ -97,12 +100,17 @@ export class EmailVerificationService {
 
   /** Verifies the code, marking the user as verified on success. Throws on bad/expired/locked-out code. */
   verify(userId: string): void {
-    this.database.db
-      .prepare('UPDATE users SET email_verified_at = ? WHERE id = ?')
-      .run(new Date().toISOString(), userId);
-    this.database.db
-      .prepare('DELETE FROM email_verification_codes WHERE user_id = ?')
-      .run(userId);
+    this.database.transaction(() => {
+      this.database.run(
+        'UPDATE users SET email_verified_at = ? WHERE id = ?',
+        new Date().toISOString(),
+        userId,
+      );
+      this.database.run(
+        'DELETE FROM email_verification_codes WHERE user_id = ?',
+        userId,
+      );
+    });
   }
 
   /** Throws CodeInvalid/CodeExpired/CodeLocked/NoPendingCode on failure; returns normally only on a correct code. */
@@ -125,20 +133,19 @@ export class EmailVerificationService {
       actual.length === expected.length && timingSafeEqual(actual, expected);
 
     if (!matches) {
-      this.database.db
-        .prepare(
-          'UPDATE email_verification_codes SET attempts = attempts + 1 WHERE user_id = ?',
-        )
-        .run(userId);
+      this.database.run(
+        'UPDATE email_verification_codes SET attempts = attempts + 1 WHERE user_id = ?',
+        userId,
+      );
       throw new CodeInvalidException();
     }
   }
 
   isVerified(userId: string): boolean {
-    const row = this.database.db
-      .prepare('SELECT email_verified_at FROM users WHERE id = ?')
-      .get(userId) as unknown as
-      { email_verified_at: string | null } | undefined;
+    const row = this.database.get<{ email_verified_at: string | null }>(
+      'SELECT email_verified_at FROM users WHERE id = ?',
+      userId,
+    );
     return !!row?.email_verified_at;
   }
 }

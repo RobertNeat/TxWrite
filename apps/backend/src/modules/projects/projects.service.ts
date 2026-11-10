@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { SQLInputValue } from 'node:sqlite';
 import { DatabaseService } from '../../common/database/database.service.js';
 import {
   isValidEngine,
@@ -55,9 +56,10 @@ export class ProjectsService {
 
   /** Throws NotFound if the profile doesn't exist, Forbidden if it belongs to another user. */
   private assertOwnsProfile(profileId: string, userId: string): void {
-    const row = this.database.db
-      .prepare('SELECT user_id FROM profiles WHERE id = ?')
-      .get(profileId) as unknown as { user_id: string | null } | undefined;
+    const row = this.database.get<{ user_id: string | null }>(
+      'SELECT user_id FROM profiles WHERE id = ?',
+      profileId,
+    );
     if (!row) {
       throw new NotFoundException(`Profile ${profileId} not found`);
     }
@@ -85,31 +87,35 @@ export class ProjectsService {
     }
 
     const id = randomUUID();
-    this.database.db
-      .prepare(
-        `INSERT INTO projects (id, name, owner_profile_id, engine, main_file)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, input.name, input.ownerProfileId, engine, mainFile);
+    this.database.run(
+      `INSERT INTO projects (id, name, owner_profile_id, engine, main_file)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      input.name,
+      input.ownerProfileId,
+      engine,
+      mainFile,
+    );
     return this.findByIdOrThrow(id);
   }
 
   findAll(userId: string): Project[] {
-    const rows = this.database.db
-      .prepare(
+    return this.database
+      .all<ProjectRow>(
         `SELECT p.* FROM projects p
          JOIN profiles pr ON pr.id = p.owner_profile_id
          WHERE pr.user_id = ?
          ORDER BY p.created_at`,
+        userId,
       )
-      .all(userId) as unknown as ProjectRow[];
-    return rows.map(toProject);
+      .map(toProject);
   }
 
   findById(id: string): Project | undefined {
-    const row = this.database.db
-      .prepare('SELECT * FROM projects WHERE id = ?')
-      .get(id) as unknown as ProjectRow | undefined;
+    const row = this.database.get<ProjectRow>(
+      'SELECT * FROM projects WHERE id = ?',
+      id,
+    );
     return row ? toProject(row) : undefined;
   }
 
@@ -121,36 +127,42 @@ export class ProjectsService {
     return project;
   }
 
+  // Explicit column whitelist — never build this from Object.keys(input),
+  // which would let a column name come from caller-controlled input.
+  private static readonly UPDATABLE_COLUMNS = {
+    name: 'name',
+    engine: 'engine',
+    mainFile: 'main_file',
+  } as const satisfies Record<keyof UpdateProjectInput, string>;
+
   update(id: string, input: UpdateProjectInput): Project {
     this.findByIdOrThrow(id);
-    const fields: string[] = [];
-    const values: unknown[] = [];
+    if (input.engine !== undefined && !isValidEngine(input.engine)) {
+      throw new BadRequestException(`Invalid engine: ${input.engine}`);
+    }
+    if (input.mainFile !== undefined && !isValidMainFile(input.mainFile)) {
+      throw new BadRequestException(`Invalid main file: ${input.mainFile}`);
+    }
 
-    if (input.name !== undefined) {
-      fields.push('name = ?');
-      values.push(input.name);
-    }
-    if (input.engine !== undefined) {
-      if (!isValidEngine(input.engine)) {
-        throw new BadRequestException(`Invalid engine: ${input.engine}`);
+    const fields: string[] = [];
+    const values: SQLInputValue[] = [];
+    for (const key of Object.keys(
+      ProjectsService.UPDATABLE_COLUMNS,
+    ) as (keyof UpdateProjectInput)[]) {
+      const value = input[key];
+      if (value !== undefined) {
+        fields.push(`${ProjectsService.UPDATABLE_COLUMNS[key]} = ?`);
+        values.push(value);
       }
-      fields.push('engine = ?');
-      values.push(input.engine);
-    }
-    if (input.mainFile !== undefined) {
-      if (!isValidMainFile(input.mainFile)) {
-        throw new BadRequestException(`Invalid main file: ${input.mainFile}`);
-      }
-      fields.push('main_file = ?');
-      values.push(input.mainFile);
     }
 
     if (fields.length > 0) {
       fields.push("updated_at = datetime('now')");
       values.push(id);
-      this.database.db
-        .prepare(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`)
-        .run(...(values as never[]));
+      this.database.run(
+        `UPDATE projects SET ${fields.join(', ')} WHERE id = ?`,
+        ...values,
+      );
     }
 
     return this.findByIdOrThrow(id);
@@ -158,6 +170,6 @@ export class ProjectsService {
 
   delete(id: string): void {
     this.findByIdOrThrow(id);
-    this.database.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    this.database.run('DELETE FROM projects WHERE id = ?', id);
   }
 }

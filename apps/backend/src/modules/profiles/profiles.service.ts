@@ -24,25 +24,30 @@ export class ProfilesService {
 
   create(displayName: string, userId: string): Profile {
     const id = randomUUID();
-    this.database.db
-      .prepare(
-        'INSERT INTO profiles (id, display_name, user_id) VALUES (?, ?, ?)',
-      )
-      .run(id, displayName, userId);
+    this.database.run(
+      'INSERT INTO profiles (id, display_name, user_id) VALUES (?, ?, ?)',
+      id,
+      displayName,
+      userId,
+    );
     return this.findById(id, userId)!;
   }
 
   findAll(userId: string): Profile[] {
-    const rows = this.database.db
-      .prepare('SELECT * FROM profiles WHERE user_id = ? ORDER BY created_at')
-      .all(userId) as unknown as ProfileRow[];
-    return rows.map(toProfile);
+    return this.database
+      .all<ProfileRow>(
+        'SELECT * FROM profiles WHERE user_id = ? ORDER BY created_at',
+        userId,
+      )
+      .map(toProfile);
   }
 
   findById(id: string, userId: string): Profile | undefined {
-    const row = this.database.db
-      .prepare('SELECT * FROM profiles WHERE id = ? AND user_id = ?')
-      .get(id, userId) as unknown as ProfileRow | undefined;
+    const row = this.database.get<ProfileRow>(
+      'SELECT * FROM profiles WHERE id = ? AND user_id = ?',
+      id,
+      userId,
+    );
     return row ? toProfile(row) : undefined;
   }
 
@@ -57,22 +62,16 @@ export class ProfilesService {
     if (!this.findById(id, userId)) {
       throw new NotFoundException(`Profile ${id} not found`);
     }
-    const projectRows = this.database.db
-      .prepare('SELECT id FROM projects WHERE owner_profile_id = ?')
-      .all(id) as unknown as { id: string }[];
-    const projectIds = projectRows.map((row) => row.id);
-
-    this.database.db.exec('BEGIN');
-    try {
-      this.database.db
-        .prepare('DELETE FROM projects WHERE owner_profile_id = ?')
-        .run(id);
-      this.database.db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
-      this.database.db.exec('COMMIT');
-    } catch (error) {
-      this.database.db.exec('ROLLBACK');
-      throw error;
-    }
-    return projectIds;
+    return this.database.transaction(() => {
+      const projectIds = this.database
+        .all<{ id: string }>(
+          'SELECT id FROM projects WHERE owner_profile_id = ?',
+          id,
+        )
+        .map((row) => row.id);
+      this.database.run('DELETE FROM projects WHERE owner_profile_id = ?', id);
+      this.database.run('DELETE FROM profiles WHERE id = ?', id);
+      return projectIds;
+    });
   }
 }

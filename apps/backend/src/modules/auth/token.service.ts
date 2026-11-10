@@ -88,12 +88,15 @@ export class TokenService {
     const expiresAt = new Date(
       Date.now() + this.refreshTtlDays * 24 * 60 * 60 * 1000,
     );
-    this.database.db
-      .prepare(
-        `INSERT INTO refresh_tokens (id, user_id, token_hash, family_id, expires_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, userId, hashToken(rawToken), familyId, expiresAt.toISOString());
+    this.database.run(
+      `INSERT INTO refresh_tokens (id, user_id, token_hash, family_id, expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      userId,
+      hashToken(rawToken),
+      familyId,
+      expiresAt.toISOString(),
+    );
 
     const access = this.signAccessToken(userId);
     return {
@@ -126,9 +129,10 @@ export class TokenService {
     if (!id || !rawToken) {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const row = this.database.db
-      .prepare('SELECT * FROM refresh_tokens WHERE id = ?')
-      .get(id) as unknown as RefreshTokenRow | undefined;
+    const row = this.database.get<RefreshTokenRow>(
+      'SELECT * FROM refresh_tokens WHERE id = ?',
+      id,
+    );
 
     if (!row || row.token_hash !== hashToken(rawToken)) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -139,9 +143,10 @@ export class TokenService {
     if (row.revoked_at) {
       const revokedAgoMs = Date.now() - new Date(row.revoked_at).getTime();
       if (revokedAgoMs <= REUSE_GRACE_WINDOW_MS && row.replaced_by_id) {
-        const replacement = this.database.db
-          .prepare('SELECT * FROM refresh_tokens WHERE id = ?')
-          .get(row.replaced_by_id) as unknown as RefreshTokenRow | undefined;
+        const replacement = this.database.get<RefreshTokenRow>(
+          'SELECT * FROM refresh_tokens WHERE id = ?',
+          row.replaced_by_id,
+        );
         // Still-unrevoked replacement means the legitimate client (the other
         // tab) already rotated — issue a sibling in the same family rather
         // than treating this as theft. Both tabs' Set-Cookie race for the
@@ -155,31 +160,38 @@ export class TokenService {
       throw new UnauthorizedException('Refresh token already used');
     }
 
-    const next = this.issueRefreshToken(row.user_id, row.family_id);
-    const [nextId] = next.refreshToken.split('.', 2);
-    this.database.db
-      .prepare(
+    // Issuing the replacement and revoking the presented token must commit
+    // together — a crash between the two would otherwise leave both tokens
+    // valid simultaneously.
+    return this.database.transaction(() => {
+      const next = this.issueRefreshToken(row.user_id, row.family_id);
+      const [nextId] = next.refreshToken.split('.', 2);
+      this.database.run(
         `UPDATE refresh_tokens SET revoked_at = ?, replaced_by_id = ? WHERE id = ?`,
-      )
-      .run(new Date().toISOString(), nextId, id);
-    return next;
+        new Date().toISOString(),
+        nextId!,
+        id,
+      );
+      return next;
+    });
   }
 
   revokeFamily(familyId: string): void {
-    this.database.db
-      .prepare(
-        `UPDATE refresh_tokens SET revoked_at = ? WHERE family_id = ? AND revoked_at IS NULL`,
-      )
-      .run(new Date().toISOString(), familyId);
+    this.database.run(
+      `UPDATE refresh_tokens SET revoked_at = ? WHERE family_id = ? AND revoked_at IS NULL`,
+      new Date().toISOString(),
+      familyId,
+    );
   }
 
   /** Logout revokes the whole family, not just the presented token, so a sibling issued under the reuse grace window above doesn't outlive logout. */
   revokeToken(presentedToken: string): void {
     const [id, rawToken] = presentedToken.split('.', 2);
     if (!id || !rawToken) return;
-    const row = this.database.db
-      .prepare('SELECT * FROM refresh_tokens WHERE id = ?')
-      .get(id) as unknown as RefreshTokenRow | undefined;
+    const row = this.database.get<RefreshTokenRow>(
+      'SELECT * FROM refresh_tokens WHERE id = ?',
+      id,
+    );
     if (!row || row.token_hash !== hashToken(rawToken)) return;
     this.revokeFamily(row.family_id);
   }

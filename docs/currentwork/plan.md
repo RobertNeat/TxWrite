@@ -4,10 +4,6 @@
 
 # Next cycles
 
-- **Revisit ORM/query-builder choice** once a maintained `node:sqlite`
-  driver exists for `drizzle-orm` (or similar) — blocked on an external
-  dependency; check periodically, not blocked on anything in this repo.
-
 - **Real browser-level (e2e) frontend tests.** No automated
   browser-level test exists yet, only unit-level Vitest specs against
   mocked `fetch`/`EventSource`. A real Playwright/Cypress-style reload
