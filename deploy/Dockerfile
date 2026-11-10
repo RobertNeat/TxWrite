@@ -5,6 +5,9 @@ FROM node:24-bookworm-slim AS frontend-build
 WORKDIR /repo
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/frontend/package.json apps/frontend/package.json
+# Bumps npm's own vendored deps (brace-expansion, tar, undici) past the CVEs
+# Trivy flags in the node:24-bookworm-slim base image.
+RUN npm install -g npm@latest
 RUN corepack enable \
     && pnpm config set fetch-timeout 600000 \
     && pnpm config set fetch-retries 10 \
@@ -22,6 +25,9 @@ FROM node:24-bookworm-slim AS backend-build
 WORKDIR /repo
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/backend/package.json apps/backend/package.json
+# Bumps npm's own vendored deps (brace-expansion, tar, undici) past the CVEs
+# Trivy flags in the node:24-bookworm-slim base image.
+RUN npm install -g npm@latest
 RUN corepack enable \
     && pnpm config set fetch-timeout 600000 \
     && pnpm config set fetch-retries 10 \
@@ -181,6 +187,9 @@ COPY --from=toolchain /opt/app/package-index.json.gz /opt/app/package-index.json
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/backend/package.json apps/backend/package.json
+# Bumps npm's own vendored deps (brace-expansion, tar, undici) past the CVEs
+# Trivy flags in the node:24-bookworm-slim base image.
+RUN npm install -g npm@latest
 RUN corepack enable \
     && pnpm config set fetch-timeout 600000 \
     && pnpm config set fetch-retries 10 \
