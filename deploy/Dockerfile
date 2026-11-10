@@ -211,5 +211,13 @@ VOLUME ["/data", "/cache"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:10800/api/health || exit 1
 
+# No USER directive: the container must start as root so entrypoint.sh can
+# chown the /data and /cache volumes and write the system fontconfig file,
+# then it drops to the unprivileged "node" user via gosu before exec'ing the
+# Node process (see entrypoint.sh's own comment, and architecture.md section
+# 8). Same root-start/gosu-drop pattern used by the official postgres and
+# redis images.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["node", "apps/backend/dist/main.js"]
