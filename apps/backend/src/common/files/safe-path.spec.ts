@@ -36,6 +36,18 @@ describe('resolveSafePath', () => {
     );
   });
 
+  it('rejects traversal using Windows-style backslash separators', () => {
+    expect(() => resolveSafePath(root, '..\\..\\outside.tex')).toThrow(
+      UnsafePathError,
+    );
+  });
+
+  it('rejects a UNC-style path', () => {
+    expect(() => resolveSafePath(root, '\\\\server\\share\\file.tex')).toThrow(
+      UnsafePathError,
+    );
+  });
+
   it('rejects NUL bytes', () => {
     expect(() => resolveSafePath(root, 'main.tex\0.sty')).toThrow(
       UnsafePathError,
