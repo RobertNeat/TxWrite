@@ -27,7 +27,9 @@ run_node corepack enable
 
 case "$PACKAGE_MANAGER" in
   pnpm)
-    run_node pnpm install --frozen-lockfile
+    # Throttle concurrency and extend fetch timeout so the local Verdaccio proxy
+    # (cold-cache, proxying to upstream npm) isn't overwhelmed by parallel requests.
+    run_node pnpm install --frozen-lockfile --network-concurrency 8 --fetch-timeout 120000
     # Resolve and build workspace dependencies from the package graph. The check
     # remains independent of application-specific package and dependency names.
     run_node pnpm --filter "${PACKAGE_NAME}..." --filter "!${PACKAGE_NAME}" run --if-present build
